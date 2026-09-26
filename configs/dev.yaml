@@ -1,0 +1,19 @@
+# Small, fast, free config for local development and pipeline testing.
+# Uses mock data (no internet, no cost) - see src/config.py for what each field means.
+experiment_id: dev_random_hotpotqa_b10
+seed: 42
+
+dataset: hotpotqa
+data_source: mock
+num_questions: 10
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+strategy: random
+budget: 0.10
+
+ketrag_knn_k: 10
+
+cache_dir: cache
+output_dir: results

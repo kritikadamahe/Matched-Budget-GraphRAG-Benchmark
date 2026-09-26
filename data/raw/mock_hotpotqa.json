@@ -1,0 +1,53 @@
+[
+  {
+    "question_id": "q1",
+    "question": "What nationality is the director of the film that won the 1994 Best Picture Oscar?",
+    "answer": "American",
+    "context": [
+      ["Forrest Gump", ["Forrest Gump is a 1994 American film directed by Robert Zemeckis.", "It won the Academy Award for Best Picture."]],
+      ["Robert Zemeckis", ["Robert Zemeckis is an American film director and producer.", "He was born in Chicago, Illinois."]],
+      ["Academy Award for Best Picture", ["The Academy Award for Best Picture is given annually by the AMPAS.", "It is considered the highest honor in American cinema."]],
+      ["Tom Hanks", ["Tom Hanks is an American actor who starred in Forrest Gump.", "He has won two Academy Awards for Best Actor."]]
+    ]
+  },
+  {
+    "question_id": "q2",
+    "question": "In what city was the composer of the soundtrack for Forrest Gump born?",
+    "answer": "Los Angeles",
+    "context": [
+      ["Alan Silvestri", ["Alan Silvestri is an American composer known for film scores.", "He was born in New York City but raised near Teaneck, New Jersey."]],
+      ["Forrest Gump", ["Forrest Gump is a 1994 American film directed by Robert Zemeckis.", "The score was composed by Alan Silvestri."]],
+      ["Film score", ["A film score is music written specifically to accompany a film.", "It differs from a soundtrack album."]]
+    ]
+  },
+  {
+    "question_id": "q3",
+    "question": "What university did the author of the novel Forrest Gump attend?",
+    "answer": "University of Alabama",
+    "context": [
+      ["Winston Groom", ["Winston Groom is an American novelist who wrote Forrest Gump.", "He attended the University of Alabama."]],
+      ["Forrest Gump (novel)", ["Forrest Gump is a 1986 novel by Winston Groom.", "It was adapted into the 1994 film of the same name."]],
+      ["University of Alabama", ["The University of Alabama is a public research university in Tuscaloosa, Alabama.", "It was founded in 1831."]]
+    ]
+  },
+  {
+    "question_id": "q4",
+    "question": "Which studio produced the 1994 film that starred Tom Hanks as a slow-witted man from Alabama?",
+    "answer": "Paramount Pictures",
+    "context": [
+      ["Forrest Gump", ["Forrest Gump is a 1994 American film directed by Robert Zemeckis.", "It was produced by Paramount Pictures."]],
+      ["Paramount Pictures", ["Paramount Pictures is an American film studio.", "It is one of the oldest major film studios in the United States."]],
+      ["Tom Hanks", ["Tom Hanks is an American actor who starred in Forrest Gump.", "He has won two Academy Awards for Best Actor."]]
+    ]
+  },
+  {
+    "question_id": "q5",
+    "question": "What year was the university attended by Winston Groom founded?",
+    "answer": "1831",
+    "context": [
+      ["Winston Groom", ["Winston Groom is an American novelist who wrote Forrest Gump.", "He attended the University of Alabama."]],
+      ["University of Alabama", ["The University of Alabama is a public research university in Tuscaloosa, Alabama.", "It was founded in 1831."]],
+      ["Tuscaloosa", ["Tuscaloosa is a city in the U.S. state of Alabama.", "It is home to the University of Alabama."]]
+    ]
+  }
+]

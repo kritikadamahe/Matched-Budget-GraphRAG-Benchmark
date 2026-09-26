@@ -1,0 +1,10 @@
+# Phase 1 dependencies only.
+# Later phases will add: openai, tiktoken (or similar), sentence-transformers (optional).
+pyyaml==6.0.2
+pydantic==2.9.2
+pandas==2.2.3
+networkx==3.4.2
+scikit-learn==1.5.2
+numpy==2.1.3
+python-dotenv==1.0.1
+pytest==8.3.3

@@ -1,0 +1,48 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# --- Environments / secrets ---
+.env
+.venv/
+venv/
+env/
+ENV/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Generated / cached / experiment-output data ---
+# Everything below is produced BY the code FROM configs + raw data, and is
+# regenerable on demand (that's the whole point of the caching/reproducibility
+# design) - it must never be committed:
+#   cache/        - embeddings, LLM extraction cache, judge-call cache
+#                   (can contain real API response content - another reason
+#                   this must never be committed)
+#   data/corpus/  - pooled/deduped corpus + chunk manifests, derived from raw data
+#   results/      - run outputs / CSVs
+# Folder structure itself is preserved via .gitkeep files; only their
+# contents are ignored. NOTE: "dir/**/*" alone does not work here - it also
+# matches the subdirectories themselves, and git will not descend into an
+# ignored directory to apply a later negation. The three-line form below
+# (ignore everything, un-ignore directories, un-ignore .gitkeep) is required.
+cache/**
+!cache/**/
+!cache/**/.gitkeep
+
+data/corpus/**
+!data/corpus/**/
+!data/corpus/**/.gitkeep
+
+results/**
+!results/**/
+!results/**/.gitkeep
