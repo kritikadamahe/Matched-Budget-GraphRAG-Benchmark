@@ -1,10 +1,23 @@
-# Phase 1 dependencies only.
+# Phases 1-3 dependencies.
 # Later phases will add: openai, tiktoken (or similar), sentence-transformers (optional).
-pyyaml==6.0.2
-pydantic==2.9.2
-pandas==2.2.3
-networkx==3.4.2
-scikit-learn==1.5.2
-numpy==2.1.3
-python-dotenv==1.0.1
-pytest==8.3.3
+# Minimum versions (the ones Phase 1 was built with), capped below the next
+# major release. Exact pins like numpy==2.1.3 have no wheels for Python 3.13+.
+# Tested on Python 3.14.
+pyyaml>=6.0.2,<7
+pydantic>=2.9.2,<3
+pandas>=2.2.3,<4
+networkx>=3.4.2,<4
+scikit-learn>=1.5.2,<2
+numpy>=2.1.3,<3
+python-dotenv>=1.0.1,<2
+pytest>=8.3.3,<10
+
+# Phase 2: real datasets (HotpotQA parquet + MuSiQue jsonl from pinned Hugging Face revisions)
+huggingface_hub>=0.24,<2
+pyarrow>=15
+
+# Optional (FastGraphRAG F1 entities, native LazyGraphRAG L4 noun phrases).
+# Without them both fall back to a capitalised-phrase rule.
+#   pip install spacy && python -m spacy download en_core_web_sm
+# Optional semantic embeddings (default is TF-IDF):
+#   pip install sentence-transformers

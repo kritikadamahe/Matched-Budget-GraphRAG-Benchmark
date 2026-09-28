@@ -1,0 +1,18 @@
+# Minimum viable experiment on REAL data (blueprint §R): HotpotQA, 20 questions.
+# First build the corpus:  python -m src.prepare_data --config configs/hotpotqa_dev.yaml
+# (downloads the HotpotQA dev set once into data/raw/hotpotqa/, ~27 MB, free)
+experiment_id: dev_random_hotpotqa_real_b10
+seed: 42
+
+dataset: hotpotqa
+data_source: huggingface
+num_questions: 20
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+strategy: random
+budget: 0.10
+
+cache_dir: cache
+output_dir: results

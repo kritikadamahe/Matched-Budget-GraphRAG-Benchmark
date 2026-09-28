@@ -46,3 +46,11 @@ data/corpus/**
 results/**
 !results/**/
 !results/**/.gitkeep
+
+# Real downloaded datasets (HotpotQA/MuSiQue dumps) are large and regenerable
+# with `python -m src.prepare_data` - never commit them. The small mock
+# fixtures used by the tests ARE committed.
+data/raw/**
+!data/raw/**/
+!data/raw/.gitkeep
+!data/raw/mock_*

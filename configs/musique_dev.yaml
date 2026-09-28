@@ -1,0 +1,18 @@
+# Small real-data config for MuSiQue-Ans, 20 questions.
+# First build the corpus:  python -m src.prepare_data --config configs/musique_dev.yaml
+# (downloads musique_ans_v1.0_dev.jsonl once into data/raw/musique/, ~30 MB, free)
+experiment_id: dev_random_musique_real_b10
+seed: 42
+
+dataset: musique
+data_source: huggingface
+num_questions: 20
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+strategy: random
+budget: 0.10
+
+cache_dir: cache
+output_dir: results

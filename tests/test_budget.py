@@ -14,7 +14,10 @@ from src.budget import selected_count, select_top_budget
     (100, 0.75, 75),
     (100, 1.00, 100),
     (3, 0.10, 1),      # rounds to 0, but minimum is 1
-    (7, 0.50, 4),       # round(3.5) -> 4 (banker's rounding note below)
+    (7, 0.50, 4),       # 3.5 -> 4
+    (5, 0.50, 3),       # 2.5 -> 3 (Python's round() would give 2: banker's rounding)
+    (25, 0.10, 3),      # 2.5 -> 3, consistent with the case above
+    (10, 0.05, 1),      # 0.5 -> 1
 ])
 def test_selected_count_matches_formula(n, budget, expected):
     assert selected_count(n, budget) == expected

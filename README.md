@@ -4,10 +4,22 @@ Evaluating retrieval quality vs. LLM extraction cost under fixed budgets,
 comparing Random, KET-RAG, LazyGraphRAG, and FastGraphRAG chunk-selection
 strategies on HotpotQA and MuSiQue.
 
-**Status: Phase 1 complete.** Project skeleton, config system, corpus/chunking
-pipeline, and two of four strategies (Random, KET-RAG) are implemented and
-tested. LazyGraphRAG and FastGraphRAG are not yet implemented. No LLM
-extraction, graph construction, retrieval, or full benchmark run exists yet.
+**Status: Phases 1-3 + all four selection strategies.** Project skeleton, config
+system, corpus/chunking pipeline (with analysis-only gold labels), budget math,
+and all four strategies are implemented and tested, plus the native
+LazyGraphRAG reference point. No LLM extraction, graph construction, retrieval,
+or full benchmark run exists yet.
+
+| Strategy | File | Blueprint category | How it ranks chunks |
+|---|---|---|---|
+| Random | `strategies/random_strategy.py` | A: faithful | seeded shuffle |
+| KET-RAG | `strategies/ketrag_strategy.py` | A/B: faithful mechanism | PageRank on a TF-IDF k-NN **chunk** graph |
+| LazyGraphRAG (L3) | `strategies/lazygraphrag_strategy.py` | B: adaptation | k-means topics, most typical chunk per topic, round-robin |
+| FastGraphRAG (F1) | `strategies/fastgraphrag_strategy.py` | C: simplified heuristic | sum of degree centrality of its **entities** (spaCy or regex) |
+| Native LazyGraphRAG (L4) | `native/lazygraphrag_native.py` | reference point, no budget | no LLM at indexing; per-question LLM relevance checks, capped |
+
+None of the strategies see questions, answers or gold labels (a test enforces
+this). spaCy is optional: `pip install spacy && python -m spacy download en_core_web_sm`.
 
 ## Setup
 
@@ -23,6 +35,31 @@ python3 -m pytest tests/ -v
 ```
 
 Expected: all tests pass. This phase makes zero paid API calls.
+
+## Build the real corpora (roadmap Phases 2-3)
+
+```bash
+python3 -m src.prepare_data --config configs/hotpotqa_dev.yaml   # HotpotQA, 20 questions
+python3 -m src.prepare_data --config configs/musique_dev.yaml    # MuSiQue-Ans, 20 questions
+```
+
+The first run downloads the dev set (free, ~30 MB each) into `data/raw/<dataset>/`
+from a pinned Hugging Face revision, so every teammate gets identical files. It
+writes `documents.json`, `questions.json`, `chunks.json` and `meta.json` to
+`data/corpus/<corpus_id>/` and checks the roadmap checkpoints: no duplicate
+documents, every gold paragraph present, same chunk_ids on re-run. Downloads and
+generated corpora are git-ignored.
+
+| Corpus (seed 42, 250/40 words) | Paragraphs | Documents after dedup | N chunks | 5% budget |
+|---|---|---|---|---|
+| HotpotQA, 20 questions | 200 | 200 | 204 | 10 |
+| MuSiQue, 20 questions | 399 | 399 | 402 | 20 |
+| HotpotQA, 200 questions | 1,994 | 1,990 | 2,016 | 101 |
+| MuSiQue, 200 questions | 3,997 | 3,370 | 3,398 | 170 |
+
+Documents are deduplicated by exact (title, text), not by title: MuSiQue often
+has several different paragraphs with the same title, and title-only dedup
+would drop a gold paragraph in 466 of its 2,417 dev questions.
 
 ## Run the pipeline on the bundled mock dataset
 
@@ -41,12 +78,12 @@ print(f'{len(chunks)} chunks from {len(documents)} deduplicated documents')
 
 ```
 configs/        experiment YAML configs
-data/raw/       raw dataset fixtures (mock_hotpotqa.json for now)
+data/raw/       mock fixtures (committed) + downloaded dev sets (git-ignored)
 data/corpus/    generated corpus/chunk manifests (not committed - see .gitignore)
 cache/          embeddings/extraction/judge-call caches (not committed)
-src/            config, corpus, chunking, budget-math modules
-strategies/     selection strategy implementations (random, ketrag done;
-                lazygraphrag, fastgraphrag not yet started)
+src/            config, corpus (loaders), chunking, budget math, prepare_data
+strategies/     selection strategies: random, ketrag, lazygraphrag (L3), fastgraphrag (F1)
+native/         native LazyGraphRAG reference point (L4)
 graph/          knowledge graph construction (Phase 8, not started)
 retrieval/      graph retrieval (Phase 9, not started)
 evaluation/     EM/F1/LLM-judge (Phase 11, not started)
@@ -60,4 +97,4 @@ tests/          one test file per component
 
 Configs support `data_source: mock` (bundled fixture, works offline, used for
 all current tests) and `data_source: huggingface` (real HotpotQA/MuSiQue,
-requires internet access to huggingface.co - not yet implemented/tested).
+downloaded once from a pinned revision, see "Build the real corpora" above).

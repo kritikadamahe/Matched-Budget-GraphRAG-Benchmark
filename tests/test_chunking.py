@@ -34,3 +34,20 @@ def test_chunk_corpus_is_order_stable():
     assert [c.chunk_id for c in chunks_1] == [c.chunk_id for c in chunks_2]
     # Alpha sorts before Zeta - confirms deterministic ordering, not dict insertion order
     assert chunks_1[0].source_title == "Alpha"
+
+
+def test_every_chunk_starts_with_its_title():
+    text = " ".join(f"w{i}" for i in range(10))
+    chunks = chunk_document("Forrest Gump", text, chunk_size_words=4, overlap_words=1)
+    assert all(c.text.startswith("Forrest Gump: ") for c in chunks)
+    # offsets and ids refer to the body only, so the prefix does not shift them
+    assert chunks[0].word_start == 0 and chunks[0].word_end == 4
+    plain = chunk_document("Forrest Gump", text, chunk_size_words=4, overlap_words=1, title_prefix=False)
+    assert [c.chunk_id for c in chunks] == [c.chunk_id for c in plain]
+
+
+def test_capitalized_phrases_fallback():
+    from src.text_utils import capitalized_phrases
+    assert capitalized_phrases("Robert Zemeckis\nParamount Pictures made it") == \
+        ["Robert Zemeckis", "Paramount Pictures"]          # never joins across a line break
+    assert "University of Alabama" in capitalized_phrases("He attended the University of Alabama.")

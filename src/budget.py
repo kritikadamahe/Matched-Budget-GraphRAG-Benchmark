@@ -7,9 +7,14 @@ count and slice the ranking - kept separate from every strategy so the
 budget math is identical no matter which strategy produced the ranking.
 
 Formula (from the blueprint): selected_count = round(B * N), minimum 1.
+Halves are rounded UP (math.floor(x + 0.5)). Python's built-in round() uses
+banker's rounding (round(2.5) == 2, round(3.5) == 4), which would make the
+cutoff inconsistent across corpus sizes.
 """
 
 from __future__ import annotations
+
+import math
 
 
 def selected_count(n_total_chunks: int, budget: float) -> int:
@@ -17,7 +22,7 @@ def selected_count(n_total_chunks: int, budget: float) -> int:
         raise ValueError("n_total_chunks must be positive")
     if not (0 < budget <= 1.0):
         raise ValueError("budget must be in (0, 1.0]")
-    return max(1, round(budget * n_total_chunks))
+    return max(1, min(n_total_chunks, math.floor(budget * n_total_chunks + 0.5)))
 
 
 def select_top_budget(ranked_chunk_ids: list[str], budget: float) -> list[str]:

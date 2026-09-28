@@ -45,13 +45,28 @@ class ExperimentConfig(BaseModel):
     chunk_overlap_words: int = Field(40, ge=0, description="Words of overlap between consecutive chunks.")
 
     # --- strategy / budget (blueprint §G, §H) ---
-    strategy: Literal["random", "ketrag"] = Field(
-        ..., description="Chunk-selection strategy. Only random/ketrag exist so far."
+    strategy: Literal["random", "ketrag", "lazygraphrag", "fastgraphrag", "lazygraphrag_native"] = Field(
+        ...,
+        description=(
+            "Chunk-selection strategy. 'lazygraphrag_native' is the L4 reference point: "
+            "it has no pre-extraction budget, so `budget` is ignored for it."
+        ),
     )
     budget: float = Field(..., gt=0, le=1.0, description="Fraction of chunks to select, e.g. 0.10 for 10%.")
 
     # --- strategy-specific knobs ---
     ketrag_knn_k: int = Field(10, gt=0, description="KET-RAG: neighbors per chunk in the similarity graph.")
+    lazy_n_clusters: int | None = Field(
+        None, gt=0, description="LazyGraphRAG (L3): number of topics; None = sqrt(N/2)."
+    )
+    fast_use_spacy: bool = Field(
+        True, description="FastGraphRAG (F1): use spaCy NER if installed, else a capitalised-phrase rule."
+    )
+    native_relevance_budget: int = Field(
+        20, gt=0, description="Native LazyGraphRAG (L4): max LLM relevance checks per question."
+    )
+    native_per_community: int = Field(3, gt=0, description="Native LazyGraphRAG (L4): checks per community.")
+    native_max_relevant: int = Field(5, gt=0, description="Native LazyGraphRAG (L4): stop after this many relevant chunks.")
 
     # --- paths (defaults are relative to project root) ---
     cache_dir: str = "cache"
