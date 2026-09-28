@@ -24,7 +24,11 @@ def build_strategy(cfg):
     if cfg.strategy == "random":
         return RandomStrategy(seed=cfg.seed)
     if cfg.strategy == "ketrag":
-        return KETRAGStrategy(knn_k=cfg.ketrag_knn_k, seed=cfg.seed)
+        embedder = None
+        if cfg.ketrag_mode == "faithful":
+            from src.embeddings import SentenceTransformerEmbedder
+            embedder = SentenceTransformerEmbedder(cfg.ketrag_embedding_model)
+        return KETRAGStrategy(knn_k=cfg.ketrag_knn_k, seed=cfg.seed, mode=cfg.ketrag_mode, embedder=embedder)
     if cfg.strategy == "lazygraphrag":
         return LazyGraphRAGStrategy(n_clusters=cfg.lazy_n_clusters, seed=cfg.seed)
     if cfg.strategy == "fastgraphrag":

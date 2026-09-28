@@ -13,13 +13,16 @@ or full benchmark run exists yet.
 | Strategy | File | Blueprint category | How it ranks chunks |
 |---|---|---|---|
 | Random | `strategies/random_strategy.py` | A: faithful | seeded shuffle |
-| KET-RAG | `strategies/ketrag_strategy.py` | A/B: faithful mechanism | PageRank on a TF-IDF k-NN **chunk** graph |
+| KET-RAG | `strategies/ketrag_strategy.py` | A/B: faithful mechanism | PageRank on a **chunk** graph: K/2 keyword-overlap + K/2 embedding neighbours, K=2 (as in the paper); `ketrag_mode: tfidf` keeps the Phase 1 TF-IDF graph as an ablation |
 | LazyGraphRAG (L3) | `strategies/lazygraphrag_strategy.py` | B: adaptation | k-means topics, most typical chunk per topic, round-robin |
 | FastGraphRAG (F1) | `strategies/fastgraphrag_strategy.py` | C: simplified heuristic | sum of degree centrality of its **entities** (spaCy or regex) |
 | Native LazyGraphRAG (L4) | `native/lazygraphrag_native.py` | reference point, no budget | no LLM at indexing; per-question LLM relevance checks, capped |
 
 None of the strategies see questions, answers or gold labels (a test enforces
 this). spaCy is optional: `pip install spacy && python -m spacy download en_core_web_sm`.
+KET-RAG's default (faithful) mode needs a local embedding model:
+`pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install sentence-transformers`
+(CPU-only torch is enough, ~200 MB; the model all-MiniLM-L6-v2 downloads on first use, ~90 MB).
 
 ## Setup
 

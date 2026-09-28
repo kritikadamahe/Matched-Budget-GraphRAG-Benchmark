@@ -5,7 +5,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.corpus import build_chunk_manifest
 from src.budget import select_top_budget
 from strategies.random_strategy import RandomStrategy
+from src.embeddings import TfidfEmbedder
 from strategies.ketrag_strategy import KETRAGStrategy
+
+# Faithful KET-RAG needs an embedder; TF-IDF keeps these tests free of torch.
+def ketrag(k=3):
+    return KETRAGStrategy(knn_k=k, embedder=TfidfEmbedder())
 
 
 def _get_test_chunks():
@@ -40,7 +45,7 @@ def test_random_differs_across_seeds():
 
 def test_ketrag_returns_full_permutation():
     chunks = _get_test_chunks()
-    strategy = KETRAGStrategy(knn_k=3)
+    strategy = ketrag()
     ranking = strategy.rank(chunks)
     assert sorted(ranking) == sorted(c.chunk_id for c in chunks)
     assert len(ranking) == len(set(ranking))
@@ -48,8 +53,8 @@ def test_ketrag_returns_full_permutation():
 
 def test_ketrag_is_deterministic():
     chunks = _get_test_chunks()
-    r1 = KETRAGStrategy(knn_k=3).rank(chunks)
-    r2 = KETRAGStrategy(knn_k=3).rank(chunks)
+    r1 = ketrag().rank(chunks)
+    r2 = ketrag().rank(chunks)
     assert r1 == r2, "PageRank + tie-break must give identical results on identical input"
 
 
@@ -59,7 +64,7 @@ def test_random_and_ketrag_rankings_differ():
     # probably wrong with one of the implementations.
     chunks = _get_test_chunks()
     r1 = RandomStrategy(seed=1).rank(chunks)
-    r2 = KETRAGStrategy(knn_k=3).rank(chunks)
+    r2 = ketrag().rank(chunks)
     assert r1 != r2
 
 
@@ -70,7 +75,7 @@ def test_all_strategies_converge_at_100_percent_budget():
     all_ids = set(c.chunk_id for c in chunks)
 
     random_selected = set(select_top_budget(RandomStrategy(seed=1).rank(chunks), 1.0))
-    ketrag_selected = set(select_top_budget(KETRAGStrategy(knn_k=3).rank(chunks), 1.0))
+    ketrag_selected = set(select_top_budget(ketrag().rank(chunks), 1.0))
 
     assert random_selected == all_ids
     assert ketrag_selected == all_ids
@@ -80,7 +85,7 @@ def test_all_strategies_converge_at_100_percent_budget():
 def test_budget_cutoff_shrinks_selection_as_expected():
     chunks = _get_test_chunks()
     n = len(chunks)
-    ranking = KETRAGStrategy(knn_k=3).rank(chunks)
+    ranking = ketrag().rank(chunks)
 
     selected_10 = select_top_budget(ranking, 0.10)
     selected_50 = select_top_budget(ranking, 0.50)

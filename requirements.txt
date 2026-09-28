@@ -19,5 +19,7 @@ pyarrow>=15
 # Optional (FastGraphRAG F1 entities, native LazyGraphRAG L4 noun phrases).
 # Without them both fall back to a capitalised-phrase rule.
 #   pip install spacy && python -m spacy download en_core_web_sm
-# Optional semantic embeddings (default is TF-IDF):
+# KET-RAG faithful mode (the default) needs a local embedding model. CPU-only torch is enough:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
 #   pip install sentence-transformers
+# Without it, use ketrag_mode: tfidf. The tests run either way.

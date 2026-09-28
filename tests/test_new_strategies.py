@@ -12,6 +12,7 @@ from src.budget import select_top_budget
 from src.chunking import Chunk
 from src.config import ExperimentConfig
 from src.corpus import build_chunk_manifest
+from src.embeddings import TfidfEmbedder
 from native.lazygraphrag_native import NativeLazyGraphRAG
 from strategies import build_strategy
 from strategies.fastgraphrag_strategy import FastGraphRAGStrategy
@@ -58,7 +59,7 @@ def test_all_four_strategies_differ_but_converge_at_100_percent():
     chunks = _chunks()
     rankings = {
         "random": RandomStrategy(seed=1).rank(chunks),
-        "ketrag": KETRAGStrategy(knn_k=3).rank(chunks),
+        "ketrag": KETRAGStrategy(knn_k=3, embedder=TfidfEmbedder()).rank(chunks),
         "lazygraphrag": LazyGraphRAGStrategy(seed=0).rank(chunks),
         "fastgraphrag": FastGraphRAGStrategy(use_spacy=False).rank(chunks),
     }
@@ -103,7 +104,7 @@ def test_fast_uses_spacy_when_available():
 @pytest.mark.parametrize("strategy", ["random", "ketrag", "lazygraphrag", "fastgraphrag"])
 def test_build_strategy_from_config(strategy):
     cfg = ExperimentConfig(experiment_id="t", seed=0, dataset="hotpotqa", num_questions=5,
-                           strategy=strategy, budget=0.1, fast_use_spacy=False)
+                           strategy=strategy, budget=0.1, fast_use_spacy=False, ketrag_mode="tfidf")
     assert build_strategy(cfg).name == strategy
 
 

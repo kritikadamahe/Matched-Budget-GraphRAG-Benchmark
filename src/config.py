@@ -55,7 +55,17 @@ class ExperimentConfig(BaseModel):
     budget: float = Field(..., gt=0, le=1.0, description="Fraction of chunks to select, e.g. 0.10 for 10%.")
 
     # --- strategy-specific knobs ---
-    ketrag_knn_k: int = Field(10, gt=0, description="KET-RAG: neighbors per chunk in the similarity graph.")
+    ketrag_mode: Literal["faithful", "tfidf"] = Field(
+        "faithful",
+        description=(
+            "KET-RAG graph: 'faithful' = K/2 keyword-overlap + K/2 embedding neighbours "
+            "(as in the KET-RAG paper); 'tfidf' = Phase 1 TF-IDF k-NN graph (ablation)."
+        ),
+    )
+    ketrag_knn_k: int = Field(2, gt=0, description="KET-RAG: K, total neighbours per chunk (paper default 2).")
+    ketrag_embedding_model: str = Field(
+        "all-MiniLM-L6-v2", description="KET-RAG faithful mode: local sentence-transformers model."
+    )
     lazy_n_clusters: int | None = Field(
         None, gt=0, description="LazyGraphRAG (L3): number of topics; None = sqrt(N/2)."
     )
