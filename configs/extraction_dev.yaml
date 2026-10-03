@@ -1,0 +1,28 @@
+# Phase 4 dev config: runs the WHOLE extraction pipeline for free.
+# Mock data + mock extractor = no internet, no API key, no cost.
+#   python -m extraction.run --config configs/extraction_dev.yaml --dry-run
+#   python -m extraction.run --config configs/extraction_dev.yaml
+experiment_id: dev_extraction_mock
+seed: 42
+
+dataset: hotpotqa
+data_source: mock
+num_questions: 5          # the bundled mock fixture has 5 questions
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+strategy: random          # random | ketrag | lazygraphrag | fastgraphrag
+budget: 0.25
+
+ketrag_mode: tfidf        # tfidf needs no embedding model (only matters if strategy: ketrag)
+fast_use_spacy: false
+
+# --- Phase 4: extraction ---
+extraction_backend: mock  # mock (free, testing only) | openai (real, needs OPENAI_API_KEY)
+extraction_model: gpt-4o-mini
+extraction_cache_enabled: true
+# extraction_max_cost_usd: 1.00   # optional spending cap for real runs
+
+cache_dir: cache
+output_dir: results

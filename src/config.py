@@ -78,6 +78,40 @@ class ExperimentConfig(BaseModel):
     native_per_community: int = Field(3, gt=0, description="Native LazyGraphRAG (L4): checks per community.")
     native_max_relevant: int = Field(5, gt=0, description="Native LazyGraphRAG (L4): stop after this many relevant chunks.")
 
+    # --- Phase 4: LLM extraction (applies only to budget-selected chunks) ---
+    extraction_backend: Literal["mock", "openai"] = Field(
+        "mock",
+        description=(
+            "'mock' = free deterministic test extractor (no key, no network). 'openai' = real "
+            "extraction; needs OPENAI_API_KEY and NEVER falls back to the mock."
+        ),
+    )
+    extraction_model: str = Field("gpt-4o-mini", description="OpenAI model used for extraction.")
+    extraction_temperature: float = Field(0.0, ge=0.0, le=2.0, description="0 = as deterministic as possible.")
+    extraction_max_output_tokens: int = Field(
+        8192, gt=0,
+        description=(
+            "Cap on the size of one extraction reply. A reply that hits it is marked 'truncated' and "
+            "is NOT retried (it would be cut off again). Keep in sync with DEFAULT_MAX_OUTPUT_TOKENS."
+        ),
+    )
+    extraction_max_retries: int = Field(
+        3, ge=0, description="Retries per chunk after a temporary API error or a malformed reply."
+    )
+    extraction_request_timeout_s: float = Field(60.0, gt=0, description="Seconds before one API request times out.")
+    extraction_cache_enabled: bool = Field(
+        True, description="Reuse earlier extractions of identical text+settings (saves money)."
+    )
+    extraction_price_input_per_1m: float = Field(
+        0.15, ge=0, description="USD per 1M input tokens (gpt-4o-mini list price; verify on OpenAI's pricing page)."
+    )
+    extraction_price_output_per_1m: float = Field(
+        0.60, ge=0, description="USD per 1M output tokens (gpt-4o-mini list price; verify on OpenAI's pricing page)."
+    )
+    extraction_max_cost_usd: float | None = Field(
+        None, gt=0, description="Optional spending cap for one extraction run; None = no cap."
+    )
+
     # --- paths (defaults are relative to project root) ---
     cache_dir: str = "cache"
     output_dir: str = "results"

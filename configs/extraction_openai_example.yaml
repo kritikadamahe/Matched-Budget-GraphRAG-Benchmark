@@ -1,0 +1,31 @@
+# REAL extraction with OpenAI GPT-4o-mini on a REAL 20-question corpus. COSTS MONEY.
+# Before spending anything:
+#   1. python -m src.prepare_data --config configs/hotpotqa_dev.yaml     (downloads data, free)
+#   2. python -m extraction.run --config configs/extraction_openai_example.yaml --dry-run
+#      (prints the chunk count and an estimated cost; needs no API key, sends nothing)
+#   3. put OPENAI_API_KEY in .env, then run the same command without --dry-run.
+# Verify the two prices below on OpenAI's pricing page first - prices change.
+experiment_id: extraction_openai_hotpotqa_b05
+seed: 42
+
+dataset: hotpotqa
+data_source: huggingface
+num_questions: 20
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+strategy: random
+budget: 0.05
+
+extraction_backend: openai
+extraction_model: gpt-4o-mini
+extraction_temperature: 0.0
+extraction_max_retries: 3
+extraction_cache_enabled: true
+extraction_price_input_per_1m: 0.15
+extraction_price_output_per_1m: 0.60
+extraction_max_cost_usd: 0.50     # run refuses/stops rather than spend more than this
+
+cache_dir: cache
+output_dir: results
