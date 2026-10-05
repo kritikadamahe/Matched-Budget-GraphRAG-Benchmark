@@ -104,7 +104,8 @@ def test_fast_uses_spacy_when_available():
 @pytest.mark.parametrize("strategy", ["random", "ketrag", "lazygraphrag", "fastgraphrag"])
 def test_build_strategy_from_config(strategy):
     cfg = ExperimentConfig(experiment_id="t", seed=0, dataset="hotpotqa", num_questions=5,
-                           strategy=strategy, budget=0.1, fast_use_spacy=False, ketrag_mode="tfidf")
+                           strategy=strategy, budget=0.1, fast_use_spacy=False, ketrag_mode="tfidf",
+                           embedding_backend="tfidf")
     assert build_strategy(cfg).name == strategy
 
 

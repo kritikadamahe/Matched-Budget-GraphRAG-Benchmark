@@ -9,7 +9,8 @@ INDEX TIME - no LLM at all, so indexing cost is $0:
   1. extract "concepts" per chunk with cheap NLP: spaCy noun phrases, or the
      capitalised-phrase rule if spaCy is not installed;
   2. build a concept co-occurrence graph and split it into communities (Louvain);
-  3. embed every chunk (TF-IDF by default).
+  3. embed every chunk with the shared embedder (cached semantic model when built
+     with build_native(cfg); TF-IDF if no embedder is given).
 
 QUERY TIME - LLM spend capped per question by `relevance_budget`:
   4. rank communities by the best question-chunk similarity inside them;
@@ -94,6 +95,18 @@ class NativeLazyGraphRAG:
                 "n_concepts": graph.number_of_nodes(), "n_communities": len(self.community_chunks)}
 
     # ------------------------------------------------------------ query time
+    @staticmethod
+    def build_context(relevant_chunks: list[Chunk], max_words: int = 1500) -> str:
+        """Context for the shared answer generator: the relevant passages, numbered,
+        within the same word limit as graph retrieval (so answering is comparable)."""
+        passages, used = [], 0
+        for c in relevant_chunks:
+            n = len(c.text.split())
+            if used + n + 1 <= max_words:
+                passages.append(f"[{len(passages) + 1}] {c.text}")
+                used += n + 1
+        return "Passages:\n" + "\n".join(passages) if passages else ""
+
     def retrieve(self, question: str, relevance_fn: RelevanceFn) -> tuple[list[Chunk], dict]:
         """Return (relevant chunks, stats) for one question."""
         if not self._indexed:

@@ -6,6 +6,7 @@ Note: the native LazyGraphRAG reference point (option L4) is NOT a
 SelectionStrategy - it has no pre-extraction budget. See native/lazygraphrag_native.py.
 """
 
+from src.embeddings import embedder_from_config
 from strategies.fastgraphrag_strategy import FastGraphRAGStrategy
 from strategies.ketrag_strategy import KETRAGStrategy
 from strategies.lazygraphrag_strategy import LazyGraphRAGStrategy
@@ -20,17 +21,16 @@ STRATEGIES = {
 
 
 def build_strategy(cfg):
-    """Create the strategy named in an ExperimentConfig, with its own knobs."""
+    """Create the strategy named in an ExperimentConfig, with its own knobs.
+    Strategies that need vectors get the ONE shared embedder (embedding_backend)."""
     if cfg.strategy == "random":
         return RandomStrategy(seed=cfg.seed)
     if cfg.strategy == "ketrag":
-        embedder = None
-        if cfg.ketrag_mode == "faithful":
-            from src.embeddings import SentenceTransformerEmbedder
-            embedder = SentenceTransformerEmbedder(cfg.ketrag_embedding_model)
+        embedder = embedder_from_config(cfg) if cfg.ketrag_mode == "faithful" else None
         return KETRAGStrategy(knn_k=cfg.ketrag_knn_k, seed=cfg.seed, mode=cfg.ketrag_mode, embedder=embedder)
     if cfg.strategy == "lazygraphrag":
-        return LazyGraphRAGStrategy(n_clusters=cfg.lazy_n_clusters, seed=cfg.seed)
+        return LazyGraphRAGStrategy(n_clusters=cfg.lazy_n_clusters, seed=cfg.seed,
+                                    embedder=embedder_from_config(cfg))
     if cfg.strategy == "fastgraphrag":
         return FastGraphRAGStrategy(use_spacy=cfg.fast_use_spacy)
     raise ValueError(f"{cfg.strategy!r} is not a budgeted selection strategy")

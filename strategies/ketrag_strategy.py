@@ -14,8 +14,9 @@ full LLM extraction. KET-RAG's default is K = 2.
 MODES:
 - "faithful" (default): the construction above. Keywords = content words
   (lowercased, English stop words removed, >= 3 letters); embeddings come from a
-  local sentence-transformers model (all-MiniLM-L6-v2, free). KET-RAG itself used
-  OpenAI text-embedding-3-small - using a local model is our documented choice.
+  local sentence-transformers model (all-MiniLM-L6-v2, free, cached - see
+  src/embeddings.py). KET-RAG itself used OpenAI text-embedding-3-small - using a
+  local model is our documented choice.
 - "tfidf": the Phase 1 version - one k-NN graph on TF-IDF cosine similarity,
   weighted PageRank. Kept as an ablation ("does the semantic half matter?").
 
@@ -115,14 +116,15 @@ class KETRAGStrategy(SelectionStrategy):
     def _get_embedder(self):
         if self.embedder is None:
             try:
-                from src.embeddings import SentenceTransformerEmbedder
-                self.embedder = SentenceTransformerEmbedder("all-MiniLM-L6-v2")
+                import sentence_transformers  # noqa: F401  (fail early, with a clear message)
             except ImportError as e:
                 raise ImportError(
                     "KET-RAG faithful mode needs a semantic embedding model: "
                     "pip install sentence-transformers (CPU-only torch is enough), "
                     "or set ketrag_mode: tfidf."
                 ) from e
+            from src.embeddings import CachedEmbedder
+            self.embedder = CachedEmbedder()          # shared default model, cached
         return self.embedder
 
     # ----------------------------------------------------------------- tfidf

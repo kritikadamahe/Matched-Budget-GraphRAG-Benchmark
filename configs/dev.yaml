@@ -13,6 +13,9 @@ chunk_overlap_words: 40
 strategy: random
 budget: 0.10
 
+embedding_backend: sentence-transformers   # shared by KET-RAG, LazyGraphRAG and retrieval (or tfidf)
+embedding_model: all-MiniLM-L6-v2
+
 ketrag_mode: faithful   # or tfidf (ablation, no embedding model needed)
 ketrag_knn_k: 2         # KET-RAG paper default
 

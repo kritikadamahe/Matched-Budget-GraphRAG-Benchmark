@@ -368,6 +368,7 @@ def write_cfg(tmp_path, **overrides):
         "experiment_id": "cli_test", "seed": 42, "dataset": "hotpotqa", "data_source": "mock",
         "num_questions": 5, "chunk_size_words": 250, "chunk_overlap_words": 40,
         "strategy": "random", "budget": 0.25, "ketrag_mode": "tfidf", "fast_use_spacy": "false",
+        "embedding_backend": "tfidf",
         "extraction_backend": "mock",
         "cache_dir": str(tmp_path / "cache"), "output_dir": str(tmp_path / "results"),
     }

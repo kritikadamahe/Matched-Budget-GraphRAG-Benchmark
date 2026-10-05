@@ -11,7 +11,8 @@ WHAT THIS ADAPTATION DOES:
 We keep only LazyGraphRAG's "relevance by embedding similarity" idea and turn
 it into a question-agnostic ranking, so - like every other strategy - it never
 sees the questions (blueprint §S):
-1. Embed every chunk (TF-IDF by default, see src/embeddings.py).
+1. Embed every chunk with the shared embedder (the cached semantic model when
+   built from a config - see src/embeddings.py; TF-IDF if none is given).
 2. Cluster the vectors into k topics with k-means (k = sqrt(N/2) by default).
 3. Score each chunk by cosine similarity to its own topic centre - how
    "typical" / representative it is of that topic.

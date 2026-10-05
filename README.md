@@ -4,11 +4,29 @@ Evaluating retrieval quality vs. LLM extraction cost under fixed budgets,
 comparing Random, KET-RAG, LazyGraphRAG, and FastGraphRAG chunk-selection
 strategies on HotpotQA and MuSiQue.
 
-**Status: Phases 1-4.** Project skeleton, config system, corpus/chunking pipeline
-(with analysis-only gold labels), budget math, all four selection strategies, the
-native LazyGraphRAG reference point, and (Phase 4) the **LLM extraction layer** that
-runs on budget-selected chunks only. Graph construction, retrieval, answer
-generation, evaluation and the full benchmark runner do not exist yet.
+**Status:** project skeleton, config system, corpus/chunking pipeline (with
+analysis-only gold labels), budget math, all four selection strategies, the native
+LazyGraphRAG reference point, the **cached embedding pipeline** and the **LLM
+extraction layer** (budget-selected chunks only), **knowledge-graph construction** and
+**personalised-PageRank retrieval** and **answer generation** (plus the native L4 relevance
+check). Evaluation and the full benchmark runner do not exist yet.
+
+**Phase numbers** follow the Blueprint's roadmap (§Q). The team's earlier labels differ
+from Phase 4 on, so both are listed:
+
+| Blueprint phase | Team label | What | Status |
+|---|---|---|---|
+| 1 | Phase 1 | environment, config | done |
+| 2-3 | Phases 2-3 | real datasets, pooled corpus, chunking | done |
+| 4 | - | cached embeddings | done |
+| 5-6 | Phase 1 | strategy interface, Random, budget math | done |
+| 7 | "Phase 4" | LLM extraction | done |
+| 12 | Phases 1-3 | KET-RAG, LazyGraphRAG, FastGraphRAG | done |
+| 8 | "Phase 5" | knowledge-graph construction | done |
+| 9 | | retrieval (personalised PageRank) | done |
+| 10 | | answer generation (+ native L4 relevance check) | done |
+| 11 | | evaluation (EM, F1, LLM judge) | next |
+| 13 / 14 / 15 | | experiment runner / full benchmark / analysis | to do |
 
 | Strategy | File | Blueprint category | How it ranks chunks |
 |---|---|---|---|
@@ -20,7 +38,8 @@ generation, evaluation and the full benchmark runner do not exist yet.
 
 None of the strategies see questions, answers or gold labels (a test enforces
 this). spaCy is optional: `pip install spacy && python -m spacy download en_core_web_sm`.
-KET-RAG's default (faithful) mode needs a local embedding model:
+KET-RAG (faithful mode), LazyGraphRAG L3 and the native L4 share one local embedding model
+(see "Embeddings" below):
 `pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install sentence-transformers`
 (CPU-only torch is enough, ~200 MB; the model all-MiniLM-L6-v2 downloads on first use, ~90 MB).
 
@@ -64,6 +83,36 @@ generated corpora are git-ignored.
 Documents are deduplicated by exact (title, text), not by title: MuSiQue often
 has several different paragraphs with the same title, and title-only dedup
 would drop a gold paragraph in 466 of its 2,417 dev questions.
+
+## Embeddings (Blueprint Phase 4)
+
+One shared model, `all-MiniLM-L6-v2` (local, free), gives the vectors for KET-RAG's
+semantic neighbours, LazyGraphRAG L3's topics, the native L4's question-chunk relevance
+and, later, retrieval. Every text is embedded at most once and cached in
+`cache/embeddings/<model>.sqlite` (git-ignored), keyed by the model and the text, so a
+fully cached run never even loads the model.
+
+```bash
+python3 -m src.embed_corpus --config configs/hotpotqa_dev.yaml   # 1st run: embeds and caches
+python3 -m src.embed_corpus --config configs/hotpotqa_dev.yaml   # 2nd run: misses=0, model_loads=0
+```
+
+| Config field | Default | Meaning |
+|---|---|---|
+| `embedding_backend` | `sentence-transformers` | or `tfidf` (tests/ablations; needs no torch, not cached) |
+| `embedding_model` | `all-MiniLM-L6-v2` | local sentence-transformers model |
+| `embedding_cache_enabled` | `true` | |
+
+`ketrag_mode: faithful` requires the semantic backend: TF-IDF is itself keyword-based, so
+it cannot be the "semantic" half (the config rejects that combination).
+
+Measured on the 200-question corpora (laptop CPU):
+
+| | First run | Cached |
+|---|---|---|
+| KET-RAG ranking, HotpotQA (N=2,016) | 29.1 s | 1.8 s |
+| KET-RAG ranking, MuSiQue (N=3,398) | 50.7 s | 5.4 s |
+| LazyGraphRAG L3 ranking | 28-65 s with TF-IDF | ~1 s |
 
 ## Run the pipeline on the bundled mock dataset
 
@@ -190,6 +239,84 @@ the cache) if spending reaches it; it can overshoot by at most the estimation er
 - **Reproducibility.** Temperature 0 and a fixed seed are sent, but OpenAI only promises
   best-effort determinism. The cache is what guarantees an identical re-run.
 
+## Knowledge graph (Blueprint Phase 8)
+
+```bash
+python3 -m extraction.run --config configs/extraction_dev.yaml    # extraction first
+python3 -m graph.build   --config configs/extraction_dev.yaml     # -> results/graphs/<run_id>/
+```
+
+Built from the extraction results of the budget-selected chunks only, identically for
+every strategy (`graph/graph_builder.py`). Writes `graph.json` (networkx node-link JSON)
+and `graph_stats.json` (nodes, edges, isolated nodes, components, types).
+
+| Decision | Choice |
+|---|---|
+| Node = entity | merged across chunks by name after light cleanup: lowercase, `.`/apostrophes removed, other punctuation -> space, leading "the" dropped ("The Beatles" = "Beatles" = "beatles.") |
+| Type clashes | one node; majority type (ties alphabetical); `type_counts` keeps all |
+| Descriptions | every distinct one kept as a list; no LLM summarisation (indexing cost = extraction only) |
+| Edge = relationship | relation text as an edge attribute; MultiDiGraph |
+| Provenance | every node lists its chunk_ids, every edge its chunk_id; the build fails if any cites an unselected chunk (Phase 8 checkpoint) |
+| Failed chunks | contribute nothing, counted in the stats |
+| Unselected chunks | not indexed at all, for every strategy (no KET-RAG keyword graph) |
+
+Sanity check on the real 20-question HotpotQA corpus (mock extractor, so the counts only
+show the wiring): at 100% budget all four strategies give the identical graph (1,823
+nodes, 1,873 edges); at 5% they differ (82 to 251 nodes).
+
+## Retrieval (Blueprint Phase 9)
+
+```bash
+python3 -m retrieval.inspect --config CONFIG --n 3   # after extraction.run and graph.build
+```
+
+Identical for every strategy (`retrieval/ppr_retrieval.py`); only the graph differs:
+
+1. embed the question with the shared embedder;
+2. seeds = the 5 entities whose card (name + descriptions) is most similar to it;
+3. personalised PageRank from the seeds (damping 0.85), edges treated as undirected
+   (an LLM's source/target order is arbitrary wording);
+4. top 20 entities by PageRank;
+5. context = `Facts:` (relationships among them) + `Passages:` (their source chunks, ordered
+   by PageRank mass), at most 1,500 words. An empty graph gives an empty context.
+
+Config: `retrieval_k_seeds` (5), `retrieval_damping` (0.85), `retrieval_top_m` (20),
+`retrieval_max_context_words` (1500), `retrieval_max_facts` (30).
+
+Check on the real 20-question HotpotQA corpus (KET-RAG, 25% budget, mock extractor): of the
+40 gold chunks, KET-RAG selected 8, and retrieval returned 7 of those 8 (88%). Misses at
+this budget come from selection, not retrieval - the split the benchmark is designed to show.
+
+## Answer generation (Blueprint Phase 10)
+
+```bash
+python3 -m generation.demo --config CONFIG --n 3              # after extraction.run and graph.build
+python3 -m generation.demo --config CONFIG --n 20 --dry-run   # cost estimate, nothing sent, no key needed
+```
+
+One fixed prompt for every condition (`generation/prompts.py`, version `answer-v1`):
+answer **only** from the context, else `"not found"`; strict JSON reply with a one-or-two
+sentence `reasoning` and the shortest exact `answer` (`yes`/`no` for yes/no questions).
+Only `answer` is scored. GPT-4o-mini at temperature 0 (`generation_backend: openai`), or a
+free `mock` for tests that is never reported.
+
+- **Empty context** (possible at tiny budgets): no call, answer `not found`, status
+  `skipped_empty_context`, $0.
+- **Same safety rules as extraction**, reusing its code: retries for temporary errors, the
+  run stops on fatal ones, truncated replies are not retried, a missing `OPENAI_API_KEY`
+  stops with an error (never a silent mock), unknown token usage is never counted as $0.
+- **Cache** in `cache/answers/` (and `cache/relevance/`) keyed by model, prompt version,
+  question and context: at 100% budget all strategies share the same context, so those
+  answers are paid once.
+- **Native L4**: the same module provides the real yes/no relevance check
+  (`RelevanceChecker`, version `relevance-v1`); its passages are answered by the same
+  answer generator, within the same 1,500-word limit.
+
+Config: `generation_backend` (`mock`), `generation_model` (`gpt-4o-mini`),
+`generation_temperature` (0), `generation_max_output_tokens` (512), `generation_max_retries`
+(3), `generation_cache_enabled`, `generation_price_input_per_1m` / `_output_per_1m`
+(0.15 / 0.60). Estimated cost: about $0.007 per 20 questions per condition.
+
 ## Project structure
 
 ```
@@ -197,12 +324,13 @@ configs/        experiment YAML configs
 data/raw/       mock fixtures (committed) + downloaded dev sets (git-ignored)
 data/corpus/    generated corpus/chunk manifests (not committed - see .gitignore)
 cache/          embeddings/extraction/judge-call caches (not committed)
-src/            config, corpus (loaders), chunking, budget math, prepare_data
+src/            config, corpus (loaders), chunking, budget math, prepare_data, embeddings, embed_corpus
 strategies/     selection strategies: random, ketrag, lazygraphrag (L3), fastgraphrag (F1)
 native/         native LazyGraphRAG reference point (L4)
-extraction/     LLM entity/relationship extraction on budget-selected chunks (Phase 4)
-graph/          knowledge graph construction (Phase 8, not started)
-retrieval/      graph retrieval (Phase 9, not started)
+extraction/     LLM entity/relationship extraction on budget-selected chunks (Blueprint Phase 7)
+graph/          knowledge-graph construction from extraction results (Blueprint Phase 8)
+retrieval/      personalised-PageRank retrieval + inspection CLI (Blueprint Phase 9)
+generation/     answer generation + native L4 relevance check, mock/OpenAI (Blueprint Phase 10)
 evaluation/     EM/F1/LLM-judge (Phase 11, not started)
 experiments/    experiment runner (Phase 13, not started)
 results/        run outputs (not committed)

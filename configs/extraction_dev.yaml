@@ -16,6 +16,7 @@ strategy: random          # random | ketrag | lazygraphrag | fastgraphrag
 budget: 0.25
 
 ketrag_mode: tfidf        # tfidf needs no embedding model (only matters if strategy: ketrag)
+embedding_backend: tfidf  # keeps lazygraphrag free of torch too (real runs: sentence-transformers)
 fast_use_spacy: false
 
 # --- Phase 4: extraction ---

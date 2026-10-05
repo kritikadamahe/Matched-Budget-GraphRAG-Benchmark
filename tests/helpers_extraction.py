@@ -82,7 +82,7 @@ class RecordingExtractor(MockExtractor):
 def make_cfg(strategy="random", **extra):
     return ExperimentConfig(experiment_id="t", seed=0, dataset="hotpotqa", num_questions=5,
                             strategy=strategy, budget=0.1, fast_use_spacy=False,
-                            ketrag_mode="tfidf", **extra)
+                            ketrag_mode="tfidf", embedding_backend="tfidf", **extra)
 
 
 def corpus():
