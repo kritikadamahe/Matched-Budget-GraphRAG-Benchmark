@@ -86,6 +86,25 @@ class ExperimentConfig(BaseModel):
     generation_price_input_per_1m: float = Field(0.15, ge=0, description="USD per 1M input tokens (verify on OpenAI's pricing page).")
     generation_price_output_per_1m: float = Field(0.60, ge=0, description="USD per 1M output tokens (verify on OpenAI's pricing page).")
 
+    # --- Phase 8 evaluation: LLM-as-a-Judge (post-hoc; its cost is reported separately) ---
+    judge_backend: Literal["mock", "openai"] = Field(
+        "mock", description="'mock' = free test judge (never reported); 'openai' = real, needs OPENAI_API_KEY."
+    )
+    judge_model: str = Field(
+        "gpt-4o-mini",
+        description=(
+            "Model that grades answers. Defaults to the generator's model, which can favour its own "
+            "answers (self-preference bias): set a different model for reported results, or document it."
+        ),
+    )
+    judge_temperature: float = Field(0.0, ge=0.0, le=2.0)
+    judge_max_output_tokens: int = Field(256, gt=0, description="Cap on one judge reply (a short reason + a verdict).")
+    judge_max_retries: int = Field(3, ge=0)
+    judge_request_timeout_s: float = Field(60.0, gt=0)
+    judge_cache_enabled: bool = Field(True, description="Reuse verdicts for identical question + reference + answer.")
+    judge_price_input_per_1m: float = Field(0.15, ge=0, description="USD per 1M input tokens (verify on OpenAI's pricing page).")
+    judge_price_output_per_1m: float = Field(0.60, ge=0, description="USD per 1M output tokens (verify on OpenAI's pricing page).")
+
     # --- strategy-specific knobs ---
     ketrag_mode: Literal["faithful", "tfidf"] = Field(
         "faithful",

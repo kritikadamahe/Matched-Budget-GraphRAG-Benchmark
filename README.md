@@ -9,7 +9,7 @@ analysis-only gold labels), budget math, all four selection strategies, the nati
 LazyGraphRAG reference point, the **cached embedding pipeline** and the **LLM
 extraction layer** (budget-selected chunks only), **knowledge-graph construction** and
 **personalised-PageRank retrieval** and **answer generation** (plus the native L4 relevance
-check). Evaluation and the full benchmark runner do not exist yet.
+check). Evaluation (EM, F1, and LLM-as-a-Judge) is implemented. The full benchmark runner and end-to-end experiments are still pending.
 
 **Phase numbers** follow the Blueprint's roadmap (§Q). The team's earlier labels differ
 from Phase 4 on, so both are listed:
@@ -25,7 +25,7 @@ from Phase 4 on, so both are listed:
 | 8 | "Phase 5" | knowledge-graph construction | done |
 | 9 | | retrieval (personalised PageRank) | done |
 | 10 | | answer generation (+ native L4 relevance check) | done |
-| 11 | | evaluation (EM, F1, LLM judge) | next |
+| 11 | | evaluation (EM, F1, LLM judge) | done |
 | 13 / 14 / 15 | | experiment runner / full benchmark / analysis | to do |
 
 | Strategy | File | Blueprint category | How it ranks chunks |
