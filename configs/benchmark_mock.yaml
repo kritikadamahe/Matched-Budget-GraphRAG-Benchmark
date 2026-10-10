@@ -1,0 +1,39 @@
+# Phase 10 experiment-runner config - FREE: bundled mock data + mock backends. No key, no network, no cost.
+# Its results are marked is_mock and are never reportable. The shared fields below are ordinary
+# ExperimentConfig fields; `matrix:` defines the 48 conditions (2 datasets x 4 strategies x 6 budgets).
+#
+#   python -m experiments.run --config configs/benchmark_mock.yaml --dry-run
+#   python -m experiments.run --config configs/benchmark_mock.yaml --datasets hotpotqa --budgets 25,100
+#   python -m experiments.run --config configs/benchmark_mock.yaml            # all 48, free
+#
+# For a REAL benchmark copy this file, set the three backends to openai (+ a different judge_model),
+# data_source: huggingface, a real num_questions, extraction_max_cost_usd, and read the README first.
+experiment_id: benchmark_mock
+seed: 42
+
+# Placeholders required by ExperimentConfig: every condition overrides dataset, strategy and budget.
+dataset: hotpotqa
+strategy: random
+budget: 0.10
+
+data_source: mock
+num_questions: 3            # the bundled MuSiQue mock fixture has 3 usable questions
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+embedding_backend: tfidf    # real runs: sentence-transformers (shared by KET-RAG faithful, LazyGraphRAG, retrieval)
+ketrag_mode: tfidf          # real runs: faithful (needs sentence-transformers)
+fast_use_spacy: false
+
+extraction_backend: mock
+generation_backend: mock
+judge_backend: mock
+
+cache_dir: cache
+output_dir: results
+
+matrix:
+  datasets: [hotpotqa, musique]
+  strategies: [random, ketrag, lazygraphrag, fastgraphrag]
+  budgets: [0.05, 0.10, 0.25, 0.50, 0.75, 1.0]
