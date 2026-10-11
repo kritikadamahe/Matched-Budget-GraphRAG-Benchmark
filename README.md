@@ -4,12 +4,7 @@ Evaluating retrieval quality vs. LLM extraction cost under fixed budgets,
 comparing Random, KET-RAG, LazyGraphRAG, and FastGraphRAG chunk-selection
 strategies on HotpotQA and MuSiQue.
 
-**Status:** project skeleton, config system, corpus/chunking pipeline (with
-analysis-only gold labels), budget math, all four selection strategies, the native
-LazyGraphRAG reference point, the **cached embedding pipeline** and the **LLM
-extraction layer** (budget-selected chunks only), **knowledge-graph construction** and
-**personalised-PageRank retrieval** and **answer generation** (plus the native L4 relevance
-check). Evaluation (EM, F1, and LLM-as-a-Judge) is implemented. The full benchmark runner and end-to-end experiments are still pending.
+**Status:** Project foundation, configuration, corpus/chunking pipeline, all four chunk-selection strategies, cached embedding pipeline, LLM extraction, knowledge-graph construction, retrieval, answer generation, and evaluation (EM, F1, and LLM-as-a-Judge) are implemented. The 48-condition experiment runner and cost/runtime aggregation are implemented and mock-tested. Real benchmark runs and Phase 12 analysis, plots, and research conclusions remain pending.
 
 **Phase numbers** follow the Blueprint's roadmap (§Q). The team's earlier labels differ
 from Phase 4 on, so both are listed:
@@ -26,7 +21,9 @@ from Phase 4 on, so both are listed:
 | 9 | | retrieval (personalised PageRank) | done |
 | 10 | | answer generation (+ native L4 relevance check) | done |
 | 11 | | evaluation (EM, F1, LLM judge) | done |
-| 13 / 14 / 15 | | experiment runner / full benchmark / analysis | to do |
+| 13 | Phase 10 | experiment runner (48-condition matrix) | done (mock-tested) |
+| 14 | Phase 11 | cost/runtime aggregation | done (mock-tested) |
+| 15 | Phase 12 | analysis, plots, and research conclusions | to do |
 
 | Strategy | File | Blueprint category | How it ranks chunks |
 |---|---|---|---|
@@ -316,6 +313,32 @@ Config: `generation_backend` (`mock`), `generation_model` (`gpt-4o-mini`),
 `generation_temperature` (0), `generation_max_output_tokens` (512), `generation_max_retries`
 (3), `generation_cache_enabled`, `generation_price_input_per_1m` / `_output_per_1m`
 (0.15 / 0.60). Estimated cost: about $0.007 per 20 questions per condition.
+
+## Cost / Runtime Aggregation (Phase 11)
+
+Phase 11 aggregates the experiment runner's results into per-condition records and group summaries for Phase 12. It does not run experiments or call paid APIs.
+
+Run aggregation on an existing experiment matrix:
+
+```bash
+python -m aggregation.aggregate --matrix-dir results/experiments/benchmark_mock
+```
+
+Or use the experiment configuration:
+
+```bash
+python -m aggregation.aggregate --config configs/benchmark_mock.yaml
+```
+
+The output is written to the matrix's `aggregate/` directory:
+
+- `conditions.jsonl` — detailed per-condition measures and metadata.
+- `conditions.csv` — flattened condition records for analysis.
+- `aggregate.json` — group summaries, exclusions, warnings, and reportability.
+
+**Important:** Missing measurements are not treated as zero. Costs, token usage, and runtimes are reported with their measurement status. Mock results are explicitly non-reportable. Real benchmark runs and Phase 12 analysis remain pending.
+
+The local test suite currently passes, including the Phase 11 aggregation tests. Some tests remain skipped because their optional datasets or dependencies are unavailable.
 
 ## Project structure
 
