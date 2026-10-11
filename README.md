@@ -1,4 +1,4 @@
-# Matched-Budget GraphRAG Selection Benchmark
+# Matched-Budget GraphRAG Selection Benchmarkk
 
 Evaluating retrieval quality vs. LLM extraction cost under fixed budgets,
 comparing Random, KET-RAG, LazyGraphRAG, and FastGraphRAG chunk-selection
