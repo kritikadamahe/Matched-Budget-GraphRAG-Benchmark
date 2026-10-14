@@ -480,13 +480,15 @@ def build_record(lc: LoadedCondition) -> ConditionRecord:
     included = r.status in INCLUDED_STATUSES
     return ConditionRecord(
         condition_id=r.condition_id, matrix_id=r.matrix_id, run_id=r.run_id, dataset=r.dataset, data_source=r.data_source,
-        strategy=r.strategy, budget=r.budget, budget_pct=r.budget_pct, seed=r.seed, corpus_id=r.corpus_id,
+        strategy=r.strategy, budget=r.budget, budget_pct=r.budget_pct, seed=r.seed, shuffle_seed=r.shuffle_seed,
+        corpus_id=r.corpus_id,
         config_hash=r.config_hash, shared_config_fingerprint=shared_config_fingerprint(r.config), config=r.config,
         status=r.status, clean=r.clean, error=r.error, problems=list(r.problems), warnings=list(r.warnings),
         included=included,
         exclusion_reason=None if included else f"{r.status}: {(r.error or 'no error recorded')[:300]}",
         is_mock=r.is_mock, reportable=r.reportable, not_reportable_reasons=list(r.not_reportable_reasons),
         judge_enabled=b.judge_enabled, reconciled=not any(i.severity == "error" for i in b.issues), issues=b.issues,
-        counts=counts, failures=failures, metrics=dict(r.metrics or {}), measures=b.measures,
+        counts=counts, failures=failures, metrics=dict(r.metrics or {}), evidence=dict(r.evidence or {}),
+        ci95=dict(r.ci95 or {}), measures=b.measures,
         started_at_utc=r.started_at_utc, finished_at_utc=r.finished_at_utc,
     )

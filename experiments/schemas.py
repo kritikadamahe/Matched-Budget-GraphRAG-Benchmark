@@ -62,6 +62,7 @@ class ConditionResult(BaseModel):
     budget: float
     budget_pct: int
     seed: int
+    shuffle_seed: int | None = None              # Random's shuffle seed when the matrix repeats Random
     corpus_id: str | None = None
     config_hash: str | None = None
     config: dict = Field(default_factory=dict)   # the full ExperimentConfig of this condition
@@ -91,6 +92,11 @@ class ConditionResult(BaseModel):
     stages: dict[str, StageRecord] = Field(default_factory=dict)
     cost: dict = Field(default_factory=dict)
     metrics: dict = Field(default_factory=dict)
+    # Evidence recall: share of each question's gold chunks that were SELECTED / RETRIEVED. Computed by
+    # the runner from gold labels it keeps aside; the pipeline itself never sees them (blueprint §S).
+    evidence: dict = Field(default_factory=dict)
+    # 95% bootstrap intervals over questions for em / f1 / judge_accuracy (evaluation/bootstrap.py)
+    ci95: dict = Field(default_factory=dict)
 
     started_at_utc: str = ""
     finished_at_utc: str = ""

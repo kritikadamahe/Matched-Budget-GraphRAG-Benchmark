@@ -67,6 +67,7 @@ class ConditionRecord(BaseModel):
     budget: float
     budget_pct: int
     seed: int
+    shuffle_seed: int | None = None                   # Random's shuffle seed (matrix random_seeds), else None
     corpus_id: str | None = None
     config_hash: str | None = None
     shared_config_fingerprint: str | None = None      # config minus dataset/strategy/budget/seed/experiment_id/paths
@@ -91,8 +92,12 @@ class ConditionRecord(BaseModel):
     counts: dict[str, int | None] = Field(default_factory=dict)
     failures: dict = Field(default_factory=dict)
 
-    # --- quality metrics, copied from the condition result (None = not computed) ---
+    # --- quality metrics, copied from the condition result (None = not computed). Evidence recall
+    #     (selection_recall, retrieval_recall, ...) and the 95% interval bounds (em_ci95_low ...) are
+    #     merged in as flat keys so they reach conditions.csv and the matched-cell statistics. ---
     metrics: dict = Field(default_factory=dict)
+    evidence: dict = Field(default_factory=dict)
+    ci95: dict = Field(default_factory=dict)
 
     # --- cost / tokens / runtime ---
     measures: dict[str, Measure] = Field(default_factory=dict)
@@ -141,6 +146,7 @@ class GroupSummary(BaseModel):
     excluded_reasons: dict[str, int] = Field(default_factory=dict)
     statuses: dict[str, int] = Field(default_factory=dict)
     seeds: list[int] = Field(default_factory=list)
+    shuffle_seeds: list[int] = Field(default_factory=list)    # Random's repeated shuffles in this group
     n_mock: int = 0
     n_reportable: int = 0
     reportable: bool = False
@@ -163,6 +169,7 @@ class ExcludedCondition(BaseModel):
     strategy: str | None = None
     budget_pct: int | None = None
     seed: int | None = None
+    shuffle_seed: int | None = None
     status: str | None = None
     reason: str
 

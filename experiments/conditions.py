@@ -25,10 +25,16 @@ file's own dataset / strategy / budget are placeholders: each condition override
       strategies: [random, ketrag, lazygraphrag, fastgraphrag]
       budgets: [0.05, 0.10, 0.25, 0.50, 0.75, 1.0]
       seeds: [42]            # optional; default = the file's `seed`
+      random_seeds: [0, 1, 2]  # optional; repeats ONLY Random, same questions, different shuffles
 
-SEED LIMITATION (known, not changed here): the single `seed` selects the questions - hence the
-corpus, N and the budget counts - AND drives Random's shuffle. A `seeds` list therefore varies the
-corpus as well as Random's ranking; conditions are only comparable within one seed.
+TWO KINDS OF SEED
+  seed / seeds   selects the questions - hence the corpus, N and the budget counts. Every strategy is
+                 run once per seed. Conditions are only comparable within one seed.
+  random_seeds   (optional) Random's shuffle ONLY, on the SAME questions/corpus. Random is run once per
+                 shuffle seed; the deterministic strategies are NOT repeated. Example: random_seeds:
+                 [0, 1, 2] gives 3 Random runs per budget + 1 run of each other strategy = 72 conditions
+                 for 2 datasets x 6 budgets (blueprint §O), instead of 144 with `seeds: [3 values]`.
+                 Their condition ids end in __rs<shuffle seed>; Phase 11 averages them per cell.
 """
 
 from __future__ import annotations
@@ -68,6 +74,8 @@ class MatrixSpec(BaseModel):
     strategies: list[str] = Field(default_factory=lambda: list(DEFAULT_STRATEGIES))
     budgets: list[float] = Field(default_factory=lambda: list(DEFAULT_BUDGETS))
     seeds: list[int] | None = Field(None, description="Default: just the config's `seed`.")
+    random_seeds: list[int] | None = Field(
+        None, description="Shuffle seeds for the Random strategy only (same corpus). Default: one Random run.")
 
     @field_validator("datasets")
     @classmethod
@@ -96,12 +104,18 @@ class MatrixSpec(BaseModel):
             raise ValueError(f"budgets must be non-empty and unique as whole percentages; got {v}")
         return v
 
-    @field_validator("seeds")
+    @field_validator("seeds", "random_seeds")
     @classmethod
     def _seeds(cls, v):
         if v is not None and (not v or len(set(v)) != len(v)):
-            raise ValueError("seeds must be a non-empty list of unique integers")
+            raise ValueError("seeds / random_seeds must be a non-empty list of unique integers")
         return v
+
+    @model_validator(mode="after")
+    def _random_seeds_need_random(self):
+        if self.random_seeds is not None and "random" not in self.strategies:
+            raise ValueError("random_seeds only applies to the random strategy, which is not in the matrix")
+        return self
 
 
 @dataclass(frozen=True)
@@ -110,6 +124,7 @@ class Condition:
     strategy: str
     budget: float
     seed: int
+    shuffle_seed: int | None = None     # Random only, when the matrix has random_seeds
 
     @property
     def budget_pct(self) -> int:
@@ -117,7 +132,8 @@ class Condition:
 
     @property
     def condition_id(self) -> str:
-        return f"{self.dataset}__{self.strategy}__b{self.budget_pct:03d}__seed{self.seed}"
+        cid = f"{self.dataset}__{self.strategy}__b{self.budget_pct:03d}__seed{self.seed}"
+        return cid if self.shuffle_seed is None else f"{cid}__rs{self.shuffle_seed}"
 
 
 def generate_conditions(spec: MatrixSpec, base_seed: int) -> list[Condition]:
@@ -125,8 +141,12 @@ def generate_conditions(spec: MatrixSpec, base_seed: int) -> list[Condition]:
     strategy, and ascending budget (so a strategy's ranking is reused across its budgets)."""
     seeds = spec.seeds if spec.seeds is not None else [base_seed]
     budgets = sorted(spec.budgets)
-    return [Condition(dataset=d, strategy=s, budget=b, seed=seed)
-            for d, seed, s, b in itertools.product(spec.datasets, seeds, spec.strategies, budgets)]
+    out = []
+    for d, seed, s in itertools.product(spec.datasets, seeds, spec.strategies):
+        shuffles = spec.random_seeds if (s == "random" and spec.random_seeds is not None) else [None]
+        for shuffle in shuffles:                       # only Random is repeated; the others run once
+            out.extend(Condition(dataset=d, strategy=s, budget=b, seed=seed, shuffle_seed=shuffle) for b in budgets)
+    return out
 
 
 def select_conditions(conditions: list[Condition], *, datasets=None, strategies=None, budgets=None,
@@ -163,7 +183,7 @@ def condition_cfg(base: ExperimentConfig, cond: Condition, matrix_id: str) -> Ex
     runs again: e.g. faithful KET-RAG on TF-IDF embeddings is rejected here, per condition."""
     data = base.model_dump()
     data.update(dataset=cond.dataset, strategy=cond.strategy, budget=cond.budget, seed=cond.seed,
-                experiment_id=f"{matrix_id}__{cond.condition_id}")
+                random_shuffle_seed=cond.shuffle_seed, experiment_id=f"{matrix_id}__{cond.condition_id}")
     return ExperimentConfig(**data)
 
 

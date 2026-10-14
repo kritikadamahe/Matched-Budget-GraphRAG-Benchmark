@@ -8,6 +8,10 @@
 #
 # For a REAL benchmark copy this file, set the three backends to openai (+ a different judge_model),
 # data_source: huggingface, a real num_questions, extraction_max_cost_usd, and read the README first.
+# Add `random_seeds: [0, 1, 2]` to the matrix block to repeat ONLY the random strategy on 3 shuffles of
+# the same questions (Random's luck varies; the other strategies are deterministic and run once) - this
+# gives the blueprint's 72 conditions (2 datasets x 6 budgets x (3 random shuffles + 3 other strategies)),
+# not 144. See experiments/conditions.py and the README's "Random's repeated shuffles" section.
 experiment_id: benchmark_mock
 seed: 42
 

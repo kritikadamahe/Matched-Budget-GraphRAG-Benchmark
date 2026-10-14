@@ -53,6 +53,75 @@ def test_seeds_multiply_the_matrix_and_keep_ids_distinct():
     assert len(conds) == 96 and len({c.condition_id for c in conds}) == 96 and {c.seed for c in conds} == {1, 2}
 
 
+# ------------------------------------------------------------------- Random-only shuffle seeds
+def test_random_seeds_repeat_only_random_not_the_other_strategies():
+    spec = MatrixSpec(strategies=["random", "ketrag", "lazygraphrag", "fastgraphrag"],
+                      datasets=["hotpotqa"], budgets=[0.1, 1.0], random_seeds=[0, 1, 2])
+    conds = generate_conditions(spec, 42)
+    # Random: 3 shuffles x 2 budgets = 6; the other three strategies: 1 run x 2 budgets each = 6
+    assert len(conds) == 6 + 6
+    random_conds = [c for c in conds if c.strategy == "random"]
+    others = [c for c in conds if c.strategy != "random"]
+    assert len(random_conds) == 6 and {c.shuffle_seed for c in random_conds} == {0, 1, 2}
+    assert len(others) == 6 and all(c.shuffle_seed is None for c in others)
+    assert all(c.seed == 42 for c in conds)                      # the corpus/question seed never changes
+
+
+def test_random_seeds_give_the_blueprints_72_condition_total():
+    # 2 datasets x 6 budgets x (3 Random shuffles + 3 deterministic strategies) = 72, not 144.
+    spec = MatrixSpec(random_seeds=[0, 1, 2])
+    conds = generate_conditions(spec, 42)
+    assert len(conds) == 72
+    assert sum(1 for c in conds if c.strategy == "random") == 2 * 6 * 3
+    assert sum(1 for c in conds if c.strategy != "random") == 2 * 6 * 3
+
+
+def test_random_seeds_produce_distinct_condition_ids_with_an_rs_suffix():
+    conds = generate_conditions(MatrixSpec(datasets=["hotpotqa"], strategies=["random"], budgets=[0.1],
+                                           random_seeds=[0, 1, 2]), 42)
+    ids = [c.condition_id for c in conds]
+    assert ids == ["hotpotqa__random__b010__seed42__rs0", "hotpotqa__random__b010__seed42__rs1",
+                   "hotpotqa__random__b010__seed42__rs2"]
+    assert len(set(ids)) == 3
+
+
+def test_random_seeds_without_random_in_the_matrix_is_rejected():
+    with pytest.raises(ValueError, match="random_seeds only applies to the random strategy"):
+        MatrixSpec(strategies=["ketrag"], random_seeds=[0, 1, 2])
+
+
+def test_random_seeds_must_be_unique_and_non_empty():
+    with pytest.raises(ValueError):
+        MatrixSpec(random_seeds=[])
+    with pytest.raises(ValueError):
+        MatrixSpec(random_seeds=[0, 0])
+
+
+def test_without_random_seeds_random_runs_once_like_every_other_strategy():
+    conds = generate_conditions(MatrixSpec(datasets=["hotpotqa"], budgets=[0.1]), 42)
+    assert all(c.shuffle_seed is None for c in conds) and len(conds) == 4
+
+
+def test_condition_cfg_threads_the_shuffle_seed_into_random_shuffle_seed(tmp_path):
+    base = base_cfg(tmp_path)
+    cfg = condition_cfg(base, Condition("hotpotqa", "random", 0.1, 42, shuffle_seed=7), "m")
+    assert cfg.random_shuffle_seed == 7 and cfg.seed == 42                         # question seed unchanged
+    plain = condition_cfg(base, Condition("hotpotqa", "random", 0.1, 42), "m")
+    assert plain.random_shuffle_seed is None
+
+
+def test_different_shuffle_seeds_give_different_random_rankings(tmp_path):
+    from strategies import build_strategy
+    from src.corpus import build_chunk_manifest
+    chunks, _, _ = build_chunk_manifest("hotpotqa", "mock", 5, 42, 250, 40)
+    base = base_cfg(tmp_path)
+    r0 = build_strategy(condition_cfg(base, Condition("hotpotqa", "random", 0.1, 42, shuffle_seed=0), "m")).rank(chunks)
+    r1 = build_strategy(condition_cfg(base, Condition("hotpotqa", "random", 0.1, 42, shuffle_seed=1), "m")).rank(chunks)
+    r0_again = build_strategy(condition_cfg(base, Condition("hotpotqa", "random", 0.1, 42, shuffle_seed=0), "m")).rank(chunks)
+    assert r0 != r1                      # different shuffle seeds -> different order
+    assert r0 == r0_again                # same shuffle seed -> reproducible
+
+
 @pytest.mark.parametrize("kwargs", [
     {"datasets": ["squad"]}, {"datasets": []}, {"datasets": ["hotpotqa", "hotpotqa"]},
     {"strategies": ["lazygraphrag_native"]}, {"strategies": ["nope"]}, {"strategies": []},

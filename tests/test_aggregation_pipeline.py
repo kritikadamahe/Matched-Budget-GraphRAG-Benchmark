@@ -76,6 +76,70 @@ def test_mock_costs_are_measured_zeros_and_every_measure_has_a_status(mock48):
     assert cell.measures["cost_total_usd"].complete and cell.measures["cost_total_usd"].sum == 0.0
 
 
+# =========================================================== random_seeds (option B) + evidence (gap 1/C) + CI (F)
+@pytest.fixture(scope="module")
+def random_repeats(tmp_path_factory):
+    """Random repeated on 3 shuffle seeds, same questions; ketrag runs once (not repeated)."""
+    return build_matrix(tmp_path_factory.mktemp("rrepeat"), mock=True, datasets=("hotpotqa",),
+                        strategies=("random", "ketrag"), budgets=(0.5,), random_seeds=[0, 1, 2])
+
+
+def test_random_seeds_give_three_conditions_random_and_one_ketrag(random_repeats):
+    report, records = aggregate_matrices([random_repeats])
+    assert report.n_conditions_loaded == 4                                       # 3 Random + 1 KET-RAG
+    random_recs = [r for r in records if r.strategy == "random"]
+    ketrag_recs = [r for r in records if r.strategy == "ketrag"]
+    assert len(random_recs) == 3 and {r.shuffle_seed for r in random_recs} == {0, 1, 2}
+    assert len(ketrag_recs) == 1 and ketrag_recs[0].shuffle_seed is None
+    assert all(r.seed == 42 for r in records)                                     # same questions/corpus throughout
+
+
+def test_cell_grouping_collapses_randoms_three_shuffles_into_one_cell(random_repeats):
+    report, _ = aggregate_matrices([random_repeats])
+    cells = [g for g in report.groups if g.level == "cell"]
+    random_cell = next(g for g in cells if g.key["strategy"] == "random")
+    ketrag_cell = next(g for g in cells if g.key["strategy"] == "ketrag")
+    assert random_cell.n_included == 3 and sorted(random_cell.shuffle_seeds) == [0, 1, 2]
+    assert ketrag_cell.n_included == 1 and ketrag_cell.shuffle_seeds == []
+
+
+def test_duplicate_detection_treats_different_shuffle_seeds_as_distinct_not_duplicates(random_repeats):
+    # Three Random conditions share (dataset, strategy, budget_pct, seed) but differ by shuffle_seed:
+    # they must NOT be flagged as duplicates of one another.
+    report, _ = aggregate_matrices([random_repeats])
+    assert report.n_errors == 0 and not report.duplicates
+
+
+def test_evidence_recall_fields_reach_conditions_jsonl(random_repeats, tmp_path):
+    report, records = aggregate_matrices([random_repeats])
+    out = write_outputs(tmp_path / "agg", report, records)
+    rows = [json.loads(l) for l in (out / "conditions.jsonl").read_text().splitlines()]
+    for row in rows:
+        assert "selection_recall" in row["evidence"] and "expected_random_selection_recall" in row["evidence"]
+        if row["strategy"] == "random":
+            # Random's measured recall should be close to its exact expectation (small mock corpus; loose bound).
+            assert abs(row["evidence"]["selection_recall"] - row["evidence"]["expected_random_selection_recall"]) <= 1.0
+
+
+def test_ci95_fields_reach_conditions_jsonl_and_csv(random_repeats, tmp_path):
+    report, records = aggregate_matrices([random_repeats])
+    out = write_outputs(tmp_path / "agg", report, records)
+    rows = [json.loads(l) for l in (out / "conditions.jsonl").read_text().splitlines()]
+    assert all("em" in row["ci95"] for row in rows)
+    with open(out / "conditions.csv") as f:
+        header = next(csv.reader(f))
+    assert "em_ci95_low" in header and "em_ci95_high" in header
+    assert "evidence_selection_recall" in header
+
+
+def test_group_statistics_average_evidence_recall_across_randoms_shuffles(random_repeats):
+    report, _ = aggregate_matrices([random_repeats])
+    random_cell = next(g for g in report.groups if g.level == "cell" and g.key["strategy"] == "random")
+    assert random_cell.metrics is not None and "selection_recall" in random_cell.metrics
+    assert random_cell.metrics["selection_recall"].n_known == 3                        # averaged over the 3 shuffles
+    assert random_cell.metrics["expected_random_selection_recall"].mean == pytest.approx(0.5)  # budget = 0.5
+
+
 def test_every_cell_of_the_matrix_appears_exactly_once(mock48):
     report, _ = aggregate_matrices([mock48])
     cells = [(g.key["dataset"], g.key["strategy"], g.key["budget_pct"]) for g in report.groups if g.level == "cell"]
@@ -192,7 +256,7 @@ def test_latest_resolves_a_duplicate_visibly_and_makes_the_aggregate_not_reporta
     report, records = aggregate_matrices([mutable], on_duplicate="latest")
     assert len(records) == 4 and report.n_included == 4
     (d,) = report.duplicates
-    assert d.cell == {"dataset": "hotpotqa", "strategy": "random", "budget_pct": 50, "seed": 42}
+    assert d.cell == {"dataset": "hotpotqa", "strategy": "random", "budget_pct": 50, "seed": 42, "shuffle_seed": None}
     assert d.kept.endswith(f"{CID}_copy") and d.dropped[0].endswith(CID) and d.policy == "latest"
     assert [e.kind for e in report.excluded] == ["duplicate_dropped"]
     assert any("--on-duplicate latest" in r for r in report.not_reportable_reasons) and not report.reportable

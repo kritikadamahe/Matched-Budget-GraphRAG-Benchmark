@@ -84,7 +84,8 @@ def aggregate_matrices(matrix_dirs, *, on_duplicate: str = "error", allow_mixed_
     fingerprints, mixed, differences = check_configs(kept, allow_mixed_config)
 
     records = sorted((build_record(lc) for lc in kept),
-                     key=lambda r: (r.dataset, r.strategy, r.budget_pct, r.seed, r.matrix_id))
+                     key=lambda r: (r.dataset, r.strategy, r.budget_pct, r.seed,
+                                    -1 if r.shuffle_seed is None else r.shuffle_seed, r.matrix_id))
     included = [r for r in records if r.included]
 
     excluded = list(disc.excluded) + dropped
@@ -92,12 +93,13 @@ def aggregate_matrices(matrix_dirs, *, on_duplicate: str = "error", allow_mixed_
         if not r.included:
             excluded.append(ExcludedCondition(
                 kind="aborted" if r.status == "aborted" else "failed", condition_id=r.condition_id, matrix_id=r.matrix_id,
-                dataset=r.dataset, strategy=r.strategy, budget_pct=r.budget_pct, seed=r.seed, status=r.status,
+                dataset=r.dataset, strategy=r.strategy, budget_pct=r.budget_pct, seed=r.seed,
+                shuffle_seed=r.shuffle_seed, status=r.status,
                 reason=r.exclusion_reason or r.status))
     issues: list[Issue] = list(disc.issues) + [i for r in records for i in r.issues]
 
     planned = disc.planned_cells
-    included_cells = {(r.dataset, r.strategy, r.budget_pct, r.seed) for r in included}
+    included_cells = {(r.dataset, r.strategy, r.budget_pct, r.seed, r.shuffle_seed) for r in included}
     complete = None if planned is None else planned <= included_cells
 
     reasons: list[str] = []
@@ -163,12 +165,18 @@ def csv_rows(records: list[ConditionRecord]):
     """(header, rows): scalar identity / outcome / count / metric columns, then <measure> and
     <measure>__status for every measure. An empty cell means no value (see the __status column)."""
     ident = ["condition_id", "matrix_id", "run_id", "dataset", "data_source", "strategy", "budget", "budget_pct", "seed",
+             "shuffle_seed",
              "corpus_id", "config_hash", "shared_config_fingerprint", "status", "included", "exclusion_reason",
              "is_mock", "reportable", "reconciled", "judge_enabled"]
     count_keys = sorted({k for r in records for k in r.counts})
     metric_keys = sorted({k for r in records for k, v in r.metrics.items() if not isinstance(v, (dict, list))})
+    evidence_keys = sorted({k for r in records for k, v in r.evidence.items() if not isinstance(v, (dict, list))})
+    ci_keys = sorted({name for r in records for name, ci in r.ci95.items() if ci})
     measure_keys = list(records[0].measures) if records else []
-    header = ident + ["n_issues", "not_reportable_reasons"] + count_keys + [f"metric_{k}" for k in metric_keys]
+    header = (ident + ["n_issues", "not_reportable_reasons"] + count_keys + [f"metric_{k}" for k in metric_keys]
+             + [f"evidence_{k}" for k in evidence_keys])
+    for name in ci_keys:
+        header += [f"{name}_ci95_low", f"{name}_ci95_high"]
     for k in measure_keys:
         header += [k, f"{k}__status"]
     rows = []
@@ -177,6 +185,10 @@ def csv_rows(records: list[ConditionRecord]):
         row += [len(r.issues), " | ".join(r.not_reportable_reasons)]
         row += [_flat_value(r.counts.get(k)) for k in count_keys]
         row += [_flat_value(r.metrics.get(k)) for k in metric_keys]
+        row += [_flat_value(r.evidence.get(k)) for k in evidence_keys]
+        for name in ci_keys:
+            ci = r.ci95.get(name)
+            row += [_flat_value(ci["low"]), _flat_value(ci["high"])] if ci else ["", ""]
         for k in measure_keys:
             m = r.measures.get(k)
             row += ["", ""] if m is None else [_flat_value(m.value), m.status]

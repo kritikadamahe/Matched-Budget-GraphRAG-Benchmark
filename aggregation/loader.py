@@ -8,7 +8,7 @@ experiments.schemas.ConditionResult, and `<matrix_dir>/matrix.json` (the planned
 Nothing is silently dropped, picked or merged:
   - a result file that cannot be read             -> listed as excluded + an error issue
   - a planned condition with no result            -> listed as excluded ("missing_result")
-  - two results for the same (dataset, strategy, budget, seed) cell
+  - two results for the same (dataset, strategy, budget, seed, shuffle seed) cell
                                                   -> AggregationError, unless --on-duplicate latest
                                                      (then the choice is written into the report)
   - conditions whose configs differ beyond the cell coordinates (a different model, chunk size ...)
@@ -27,7 +27,7 @@ from aggregation.schemas import DuplicateRecord, ExcludedCondition, Issue
 from experiments.schemas import RESULT_FILE, ConditionResult, read_condition_result
 
 # per-condition coordinates and paths: these legitimately differ between conditions of one matrix
-COORDINATE_KEYS = ("dataset", "strategy", "budget", "seed", "experiment_id")
+COORDINATE_KEYS = ("dataset", "strategy", "budget", "seed", "random_shuffle_seed", "experiment_id")
 PATH_KEYS = ("cache_dir", "output_dir")
 INCLUDED_STATUSES = ("completed", "completed_with_failures")
 
@@ -45,7 +45,7 @@ class LoadedCondition:
     @property
     def cell(self) -> tuple:
         r = self.result
-        return (r.dataset, r.strategy, r.budget_pct, r.seed)
+        return (r.dataset, r.strategy, r.budget_pct, r.seed, r.shuffle_seed)
 
     @property
     def label(self) -> str:
@@ -62,7 +62,8 @@ class Discovery:
 
 
 def cell_dict(cell: tuple) -> dict:
-    return {"dataset": cell[0], "strategy": cell[1], "budget_pct": cell[2], "seed": cell[3]}
+    return {"dataset": cell[0], "strategy": cell[1], "budget_pct": cell[2], "seed": cell[3],
+            "shuffle_seed": cell[4] if len(cell) > 4 else None}
 
 
 def shared_config_fingerprint(config: dict) -> str | None:
@@ -136,13 +137,13 @@ def discover(matrix_dirs: list[Path]) -> Discovery:
         if matrix_id and matrix_id not in disc.matrix_ids:
             disc.matrix_ids.append(matrix_id)
         for e in entries:
-            cell = (e["dataset"], e["strategy"], e["budget_pct"], e["seed"])
+            cell = (e["dataset"], e["strategy"], e["budget_pct"], e["seed"], e.get("shuffle_seed"))
             if planned_all is not None:
                 planned_all.add(cell)
             if cell not in loaded_here and e["condition_id"] not in unreadable_ids:
                 disc.excluded.append(ExcludedCondition(
                     kind="missing_result", condition_id=e["condition_id"], matrix_id=matrix_id,
-                    dataset=cell[0], strategy=cell[1], budget_pct=cell[2], seed=cell[3],
+                    dataset=cell[0], strategy=cell[1], budget_pct=cell[2], seed=cell[3], shuffle_seed=cell[4],
                     reason="planned in matrix.json but has no readable result (never run, or still running)"))
     disc.planned_cells = planned_all
     if not disc.conditions:
@@ -161,7 +162,8 @@ def resolve_duplicates(conditions: list[LoadedCondition], policy: str):
         by_cell.setdefault(lc.cell, []).append(lc)
     dups = {c: v for c, v in by_cell.items() if len(v) > 1}
     if dups and policy == "error":
-        lines = [f"  {cell_dict(c)}: " + ", ".join(lc.label for lc in v) for c, v in sorted(dups.items())]
+        lines = [f"  {cell_dict(c)}: " + ", ".join(lc.label for lc in v)
+                 for c, v in sorted(dups.items(), key=lambda kv: str(kv[0]))]
         raise AggregationError(
             f"{len(dups)} cell(s) have more than one result; refusing to choose silently:\n" + "\n".join(lines) +
             "\n  Remove the extra result(s), or pass --on-duplicate latest to keep the most recently finished one.")

@@ -49,6 +49,62 @@ def test_one_condition_runs_every_stage_and_writes_every_artifact(tmp_path):
     assert res == read_condition_result(d)                                           # what was returned is what was saved
 
 
+# ============================================================= evidence recall (gap 1) + CIs (option F)
+def test_evidence_recall_is_computed_at_full_budget_without_leaking_gold_labels(tmp_path):
+    full = Condition("hotpotqa", "random", 1.0, 42)             # every chunk selected -> full recall
+    ctx = make_ctx(tmp_path, cfg=base_cfg(tmp_path, budget=1.0))
+    res = run_condition(full, ctx)
+    assert res.status == "completed"
+    assert res.evidence["selection_recall"] == 1.0 and res.evidence["selection_all_gold_rate"] == 1.0
+    assert res.evidence["selection_n_questions"] == 3                     # q1, q3, q5 each have gold chunks
+    assert res.evidence["expected_random_selection_recall"] == 1.0        # k/N = 8/8 at 100% budget
+    assert res.evidence["retrieval_recall"] is not None and res.evidence["retrieval_n_questions"] == 3
+    # the pipeline itself never saw the gold labels (existing leakage guard still holds)
+    assert res.stages["ranking"].details is not None
+
+
+def test_evidence_recall_reflects_a_smaller_budget(tmp_path):
+    # budget 0.5 selects 4 of 8 chunks; recall must be <= 1.0 and the expected-random figure equals the budget.
+    partial = Condition("hotpotqa", "random", 0.5, 42)
+    ctx = make_ctx(tmp_path, cfg=base_cfg(tmp_path, budget=0.5))
+    res = run_condition(partial, ctx)
+    assert 0.0 <= res.evidence["selection_recall"] <= 1.0
+    assert res.evidence["expected_random_selection_recall"] == 0.5        # k/N = 4/8
+    assert res.evidence["selection_n_questions"] == 3
+
+
+def test_retrieval_recall_cannot_exceed_selection_recall(tmp_path):
+    # Retrieval can only reach chunks that were selected and extracted (blueprint invariant).
+    for budget in (0.25, 0.5, 1.0):
+        res = run_condition(Condition("hotpotqa", "random", budget, 42),
+                            make_ctx(tmp_path / str(budget), cfg=base_cfg(tmp_path / str(budget), budget=budget)))
+        if res.evidence["retrieval_recall"] is not None and res.evidence["selection_recall"] is not None:
+            assert res.evidence["retrieval_recall"] <= res.evidence["selection_recall"] + 1e-9
+
+
+def test_ci95_is_populated_for_em_f1_and_judge(tmp_path):
+    ctx = make_ctx(tmp_path)
+    res = run_condition(COND, ctx)
+    assert set(res.ci95) == {"em", "f1", "judge_accuracy"}
+    for name in ("em", "f1"):
+        ci = res.ci95[name]
+        assert ci is not None and ci["low"] <= ci["mean"] <= ci["high"] and ci["n"] > 0
+
+
+def test_ci95_is_empty_dict_when_no_judge(tmp_path):
+    ctx = make_ctx(tmp_path, no_judge=True)
+    res = run_condition(COND, ctx)
+    assert res.ci95["judge_accuracy"] is None                       # no verdicts collected
+    assert res.ci95["em"] is not None
+
+
+def test_evidence_and_ci_are_absent_before_evaluation_on_a_failed_condition(tmp_path):
+    ctx = make_ctx(tmp_path, comps=Components(build_extractor=lambda cfg: AbortingExtractor()))
+    res = run_condition(COND, ctx)
+    assert res.status == "aborted"
+    assert res.ci95 == {}                                            # evaluation never ran
+
+
 def test_the_result_records_identity_config_and_reproducibility_fields(tmp_path):
     ctx = make_ctx(tmp_path)
     res = run_condition(COND, ctx)

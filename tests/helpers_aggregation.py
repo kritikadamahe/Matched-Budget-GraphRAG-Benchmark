@@ -98,7 +98,7 @@ PRICED_CFG = dict(experiment_id="priced", data_source="huggingface", extraction_
 
 
 def build_matrix(root, *, strategies=("random", "ketrag"), budgets=(0.25, 0.5), datasets=("hotpotqa",), seeds=None,
-                 comps=None, no_judge=False, mock=False, **cfg_kw) -> Path:
+                 random_seeds=None, comps=None, no_judge=False, mock=False, **cfg_kw) -> Path:
     """Run the real runner over a small matrix and return the matrix directory. `mock=True` uses the plain
     mock components and the mock dataset (what the free runs produce); otherwise the priced, non-mock doubles."""
     root = Path(root)
@@ -108,7 +108,8 @@ def build_matrix(root, *, strategies=("random", "ketrag"), budgets=(0.25, 0.5), 
     else:
         cfg = base_cfg(root, **{**PRICED_CFG, **cfg_kw})
         ctx = make_ctx(root, cfg=cfg, comps=comps or priced_components(), no_judge=no_judge)
-    spec = MatrixSpec(datasets=list(datasets), strategies=list(strategies), budgets=list(budgets), seeds=seeds)
+    spec = MatrixSpec(datasets=list(datasets), strategies=list(strategies), budgets=list(budgets), seeds=seeds,
+                      random_seeds=random_seeds)
     conds = generate_conditions(spec, ctx.base_cfg.seed)
     write_manifest(ctx, spec, conds)
     run_matrix(conds, ctx, all_conditions=conds)

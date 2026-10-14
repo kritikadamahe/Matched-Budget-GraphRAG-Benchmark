@@ -30,7 +30,7 @@ import statistics
 from aggregation.schemas import ConditionRecord, GroupSummary, MetricStat, Stat
 from aggregation.measures import _r
 
-GROUP_FIELDS = ("dataset", "strategy", "budget_pct", "seed")
+GROUP_FIELDS = ("dataset", "strategy", "budget_pct", "seed", "shuffle_seed")
 DEFAULT_LEVELS = (
     ("cell", ("dataset", "strategy", "budget_pct")),
     ("dataset_strategy", ("dataset", "strategy")),
@@ -41,7 +41,10 @@ ADDITIVE_KINDS = ("cost", "spent", "tokens", "runtime", "elapsed")
 COUNT_KEYS = ("n_chunks_total", "n_selected", "n_questions", "n_predictions", "n_question_failures",
               "extraction_n_failed", "extraction_n_cache_hits", "generation_n_failed", "n_answered", "n_abstained",
               "n_empty", "n_failed_outcomes", "judge_n_calls", "judge_n_failed")
-METRIC_KEYS = ("em", "f1", "em_failures_as_wrong", "f1_failures_as_wrong", "judge_accuracy")
+METRIC_KEYS = ("em", "f1", "em_failures_as_wrong", "f1_failures_as_wrong", "judge_accuracy",
+               # evidence recall (did the strategy pick / retrieve the gold chunks?) and Random's exact expectation
+               "selection_recall", "selection_all_gold_rate", "retrieval_recall", "retrieval_all_gold_rate",
+               "expected_random_selection_recall")
 
 
 def parse_group_by(spec: str) -> tuple[str, tuple[str, ...]]:
@@ -50,6 +53,13 @@ def parse_group_by(spec: str) -> tuple[str, tuple[str, ...]]:
     if not fields or bad or len(set(fields)) != len(fields):
         raise ValueError(f"--group-by needs unique fields from {GROUP_FIELDS}; got {spec!r}")
     return "+".join(fields), fields
+
+
+def _metric_or_evidence(r, key):
+    """METRIC_KEYS mixes runner-computed metrics (em, f1, judge_accuracy, ...) with evidence-recall
+    figures (selection_recall, ...), which live in separate ConditionRecord fields; metrics itself is
+    left exactly as the runner wrote it."""
+    return r.metrics[key] if key in r.metrics else r.evidence.get(key)
 
 
 def stat_of(measures, *, additive: bool) -> Stat:
@@ -120,9 +130,10 @@ def _summarize_one(level, fields, key, members: list[ConditionRecord]) -> GroupS
         nr_reasons.append("per-item cross-checks failed for some conditions (see issues)")
 
     if matched:
-        metrics = {k: metric_stat([r.metrics.get(k) for r in inc]) for k in METRIC_KEYS}
+        metrics = {k: metric_stat([_metric_or_evidence(r, k) for r in inc]) for k in METRIC_KEYS}
         comparison, note = "matched_budget_cell", (
-            "Same dataset, strategy and budget; only seeds are collapsed. Compare strategies by placing cells with "
+            "Same dataset, strategy and budget; only seeds (and Random's repeated shuffles) are collapsed: the "
+            "mean and std over shuffles show Random's luck. Compare strategies by placing cells with "
             "the same dataset and budget_pct side by side.")
         omitted = None
     else:
@@ -139,7 +150,9 @@ def _summarize_one(level, fields, key, members: list[ConditionRecord]) -> GroupS
         key=dict(zip(fields, key)), n_conditions=len(members), n_included=len(inc), n_excluded=len(exc),
         excluded_reasons=dict(sorted(reasons.items())),
         statuses=dict(sorted({s: sum(1 for r in members if r.status == s) for s in {r.status for r in members}}.items())),
-        seeds=sorted({r.seed for r in members}), n_mock=sum(1 for r in inc if r.is_mock),
+        seeds=sorted({r.seed for r in members}),
+        shuffle_seeds=sorted({r.shuffle_seed for r in members if r.shuffle_seed is not None}),
+        n_mock=sum(1 for r in inc if r.is_mock),
         n_reportable=sum(1 for r in inc if r.reportable), reportable=bool(inc) and not nr_reasons,
         not_reportable_reasons=nr_reasons, n_unreconciled=sum(1 for r in inc if not r.reconciled),
         config_fingerprints=sorted({r.shared_config_fingerprint for r in inc if r.shared_config_fingerprint}),

@@ -24,7 +24,9 @@ def build_strategy(cfg):
     """Create the strategy named in an ExperimentConfig, with its own knobs.
     Strategies that need vectors get the ONE shared embedder (embedding_backend)."""
     if cfg.strategy == "random":
-        return RandomStrategy(seed=cfg.seed)
+        # The shuffle seed is separate from `seed`, which picks the questions (and so the corpus).
+        shuffle = cfg.random_shuffle_seed if cfg.random_shuffle_seed is not None else cfg.seed
+        return RandomStrategy(seed=shuffle)
     if cfg.strategy == "ketrag":
         embedder = embedder_from_config(cfg) if cfg.ketrag_mode == "faithful" else None
         return KETRAGStrategy(knn_k=cfg.ketrag_knn_k, seed=cfg.seed, mode=cfg.ketrag_mode, embedder=embedder)

@@ -338,6 +338,40 @@ The output is written to the matrix's `aggregate/` directory:
 
 **Important:** Missing measurements are not treated as zero. Costs, token usage, and runtimes are reported with their measurement status. Mock results are explicitly non-reportable. Real benchmark runs and Phase 12 analysis remain pending.
 
+### Random's repeated shuffles, evidence recall, and confidence intervals
+
+Random picks chunks by chance, so a single run could get lucky or unlucky. Three additions make the
+comparison fair, following the standard practice for papers with a random baseline:
+
+- **Repeated shuffles (matrix `random_seeds`).** `seed` (and `seeds`) selects the *questions* - hence the
+  corpus, N and the budget counts - and every strategy runs once per value. `random_seeds` is separate: it
+  repeats *only* the random strategy's shuffle, on the *same* questions/corpus, so its luck can be averaged
+  out without wastefully re-running the deterministic strategies (KET-RAG, LazyGraphRAG, FastGraphRAG),
+  which always rank chunks the same way. `random_seeds: [0, 1, 2]` gives the blueprint's 72 conditions
+  (2 datasets x 6 budgets x (3 random shuffles + 3 other strategies)), not 144. Each repeated condition's id
+  ends in `__rs<shuffle seed>` (e.g. `hotpotqa__random__b010__seed42__rs1`); `random_shuffle_seed` is the
+  matching `ExperimentConfig` field (`strategies/__init__.py` builds `RandomStrategy` from it). Phase 11's
+  cell grouping collapses these shuffles like it collapses `seeds`, reporting their mean and spread.
+- **Evidence recall** (the runner's `selection` and `retrieval` stages): the share of each question's gold
+  chunks that were selected for extraction, and of those, the share retrieval actually returned, plus the
+  share of questions where *every* gold chunk was reached (a multi-hop question usually needs all of them).
+  Computed from gold labels the runner keeps aside in memory *before* stripping them from what the pipeline
+  sees (blueprint §S: no stage - selector, extractor, retriever or generator - ever receives them). Reported
+  as `ConditionResult.evidence` / `ConditionRecord.evidence` (`selection_recall`, `selection_all_gold_rate`,
+  `retrieval_recall`, `retrieval_all_gold_rate`, plus their `_n_questions` counts), and as
+  `evidence_<name>` columns in `conditions.csv`.
+- **Random's exact expectation, with no extra runs.** The random strategy selects each chunk independently
+  with probability `k/N` (the budget), so its *expected* selection recall is exactly `k/N` - this needs no
+  simulation and is recorded alongside the measured figure as `expected_random_selection_recall`, which also
+  doubles as a sanity check on the measured one.
+- **95% bootstrap confidence intervals** over the questions of one condition (`evaluation/bootstrap.py`,
+  1,000 resamples, EM / F1 / judge accuracy), written to `ConditionResult.ci95` / `ConditionRecord.ci95` and
+  as `<metric>_ci95_low` / `_high` columns in `conditions.csv`. `paired_bootstrap` compares two conditions
+  that answered the same questions (e.g. two strategies at one budget), matching per-question scores so
+  question-to-question difficulty cancels out; Phase 12 will use it for strategy-vs-strategy significance.
+  Note that this captures uncertainty about *which questions were asked*, not Random's luck in picking
+  chunks - that is what `random_seeds` is for.
+
 The local test suite currently passes, including the Phase 11 aggregation tests. Some tests remain skipped because their optional datasets or dependencies are unavailable.
 
 ## Project structure
@@ -354,8 +388,9 @@ extraction/     LLM entity/relationship extraction on budget-selected chunks (Bl
 graph/          knowledge-graph construction from extraction results (Blueprint Phase 8)
 retrieval/      personalised-PageRank retrieval + inspection CLI (Blueprint Phase 9)
 generation/     answer generation + native L4 relevance check, mock/OpenAI (Blueprint Phase 10)
-evaluation/     EM/F1/LLM-judge (Phase 11, not started)
-experiments/    experiment runner (Phase 13, not started)
+evaluation/     EM/F1/LLM-judge + bootstrap confidence intervals (Blueprint Phase 11)
+experiments/    experiment runner over the matched-budget matrix (Blueprint Phase 13)
+aggregation/    cost/runtime/evidence aggregation into per-condition and group summaries (Blueprint Phase 14)
 results/        run outputs (not committed)
 notebooks/      analysis notebooks (Phase 15, not started)
 tests/          one test file per component

@@ -66,6 +66,15 @@ class ExperimentConfig(BaseModel):
     embedding_model: str = Field("all-MiniLM-L6-v2", description="Local sentence-transformers model.")
     embedding_cache_enabled: bool = Field(True, description="Reuse cached embeddings (cache/embeddings/).")
 
+    # --- Random's shuffle seed, separate from `seed` (which picks the questions and so the corpus) ---
+    random_shuffle_seed: int | None = Field(
+        None,
+        description=(
+            "Seed for the Random strategy's shuffle ONLY. None = use `seed` (old behaviour). Lets Random be "
+            "repeated on the SAME questions/corpus with different luck (matrix `random_seeds`)."
+        ),
+    )
+
     # --- retrieval (blueprint Phase 9, §J): identical for every condition ---
     retrieval_k_seeds: int = Field(5, gt=0, description="Seed entities most similar to the question.")
     retrieval_damping: float = Field(0.85, gt=0, lt=1, description="Personalised PageRank damping factor.")

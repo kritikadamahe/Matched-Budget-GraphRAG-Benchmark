@@ -51,6 +51,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from evaluation.bootstrap import condition_cis
 from evaluation.judge import build_judge
 from evaluation.schemas import PredictionRecord, write_predictions
 from evaluation.score import gold_from_questions, score_predictions, write_outputs
@@ -111,6 +112,7 @@ class RunnerContext:
     log: Callable[[str], None] = lambda message: None
     _corpora: dict = field(default_factory=dict)
     _rankings: dict = field(default_factory=dict)
+    _gold: dict = field(default_factory=dict)
 
     def condition_dir(self, cond: Condition) -> Path:
         return self.matrix_dir / "conditions" / cond.condition_id
@@ -123,15 +125,26 @@ class RunnerContext:
         if not reused:
             raw_chunks, questions, _documents = self.comps.load_corpus(cfg)
             n_labelled = sum(1 for c in raw_chunks if c.is_gold_for_question_ids)
+            # Kept aside for evidence recall ONLY; never passed to any pipeline stage.
+            gold: dict[str, set[str]] = {}
+            for c in raw_chunks:
+                for qid in c.is_gold_for_question_ids:
+                    gold.setdefault(str(qid), set()).add(c.chunk_id)
+            self._gold[key] = gold
             clean = [dataclasses.replace(c, is_gold_for_question_ids=[]) for c in raw_chunks]
             self._corpora[key] = (clean, questions, n_labelled)
         clean, questions, n_labelled = self._corpora[key]
         return key, clean, questions, n_labelled, reused
 
+    def gold_chunks(self, corpus_key) -> dict[str, set[str]]:
+        """{question_id: gold chunk ids} for evidence recall (analysis only)."""
+        return self._gold.get(corpus_key, {})
+
     # -- ranking: a strategy's ranking never depends on the budget, so compute it once and reuse it
     def ranking(self, cfg: ExperimentConfig, corpus_key, chunks):
         key = (corpus_key, cfg.strategy, cfg.ketrag_mode, cfg.ketrag_knn_k, cfg.lazy_n_clusters,
-               cfg.fast_use_spacy, cfg.embedding_backend, cfg.embedding_model)
+               cfg.fast_use_spacy, cfg.embedding_backend, cfg.embedding_model,
+               cfg.random_shuffle_seed if cfg.strategy == "random" else None)
         reused = key in self._rankings
         if not reused:
             strategy = self.comps.build_strategy(cfg)
@@ -140,6 +153,27 @@ class RunnerContext:
             self._rankings[key] = (ranked, time.perf_counter() - t)
         ranked, seconds = self._rankings[key]
         return ranked, seconds, reused
+
+
+# ----------------------------------------------------------------------------- evidence recall
+def evidence_recall(gold: dict[str, set[str]], questions, found, prefix: str) -> dict:
+    """Share of each question's gold chunks present in `found` (a set of chunk ids, or a per-question
+    dict of sets), averaged over questions that have gold chunks; plus the share of questions whose gold
+    chunks are ALL present (a multi-hop question usually needs every hop). Analysis only."""
+    recalls, complete = [], 0
+    for q in questions:
+        qid = str(q["question_id"])
+        g = gold.get(qid)
+        if not g:
+            continue
+        have = found.get(qid, set()) if isinstance(found, dict) else found
+        hit = len(g & have)
+        recalls.append(hit / len(g))
+        complete += hit == len(g)
+    n = len(recalls)
+    return {f"{prefix}_recall": round(sum(recalls) / n, 6) if n else None,
+            f"{prefix}_all_gold_rate": round(complete / n, 6) if n else None,
+            f"{prefix}_n_questions": n}
 
 
 # ----------------------------------------------------------------------------- stage helper
@@ -234,7 +268,7 @@ def run_condition(cond: Condition, ctx: RunnerContext) -> ConditionResult:
     res = ConditionResult(
         condition_id=cond.condition_id, matrix_id=ctx.matrix_id, dataset=cond.dataset,
         data_source=ctx.base_cfg.data_source, strategy=cond.strategy, budget=cond.budget,
-        budget_pct=cond.budget_pct, seed=cond.seed, started_at_utc=started_at,
+        budget_pct=cond.budget_pct, seed=cond.seed, shuffle_seed=cond.shuffle_seed, started_at_utc=started_at,
         stages={name: StageRecord() for name in STAGES},
     )
     try:
@@ -273,6 +307,10 @@ def run_condition(cond: Condition, ctx: RunnerContext) -> ConditionResult:
             rec.details = {"n_chunks_total": len(chunks), "budget": cfg.budget, "budget_pct": cond.budget_pct,
                            "n_selected_expected": expected, "n_selected": len(selection.selected_ids),
                            "selected_fingerprint": selection.fingerprint}
+            gold_map = ctx.gold_chunks(key)
+            res.evidence = evidence_recall(gold_map, questions, set(selection.selected_ids), "selection")
+            # Random picks each chunk with probability k/N, so its EXPECTED recall is exactly k/N.
+            res.evidence["expected_random_selection_recall"] = round(len(selection.selected_ids) / len(chunks), 6)
         # 4. extraction (existing pipeline: BudgetGate + cache + spending cap) -----------------
         with _stage(res, "extraction") as rec:
             extractor = ctx.comps.build_extractor(cfg)
@@ -319,6 +357,8 @@ def run_condition(cond: Condition, ctx: RunnerContext) -> ConditionResult:
                 "n_empty_graph": sum(1 for _q, r in retrieved if r.empty_graph),
                 "mean_context_words": round(sum(r.n_words for _q, r in retrieved) / len(retrieved), 2),
             }
+            retrieved_ids = {str(q["question_id"]): set(r.chunk_ids) for q, r in retrieved}
+            res.evidence.update(evidence_recall(gold_map, [q for q, _r in retrieved], retrieved_ids, "retrieval"))
         # 7. generation: gets (question text, context), nothing else ----------------------------
         with _stage(res, "generation") as rec:
             answerer = ctx.comps.build_answerer(cfg)
@@ -337,6 +377,7 @@ def run_condition(cond: Condition, ctx: RunnerContext) -> ConditionResult:
             run_eval = score_predictions(records, gold, judge)
             write_outputs(cond_dir, run_eval)
             eval_summary = run_eval.summary
+            res.ci95 = condition_cis(run_eval.scored)
             rec.details = {"metrics": eval_summary["metrics"], "outcome_counts": eval_summary["outcome_counts"],
                            "judge": {k: eval_summary["judge"].get(k) for k in
                                      ("enabled", "backend", "model", "accuracy", "n_verdicts", "n_judge_failed")},
@@ -534,7 +575,8 @@ def write_manifest(ctx: RunnerContext, spec: MatrixSpec, all_conditions: list[Co
         "runner_schema_version": RUNNER_SCHEMA_VERSION, "matrix_id": ctx.matrix_id, "written_at_utc": _utcnow(),
         "spec": spec.model_dump(), "n_conditions": len(all_conditions),
         "conditions": [{"condition_id": c.condition_id, "dataset": c.dataset, "strategy": c.strategy,
-                        "budget": c.budget, "budget_pct": c.budget_pct, "seed": c.seed} for c in all_conditions],
+                        "budget": c.budget, "budget_pct": c.budget_pct, "seed": c.seed,
+                        "shuffle_seed": c.shuffle_seed} for c in all_conditions],
         "base_config": ctx.base_cfg.model_dump(),
         "note": "dataset / strategy / budget in base_config are placeholders: each condition overrides them.",
     }
