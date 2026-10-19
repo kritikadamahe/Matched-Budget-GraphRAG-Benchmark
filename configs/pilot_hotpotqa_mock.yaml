@@ -1,0 +1,34 @@
+# MOCK run: fake extraction/answers/judge. Plumbing check only; never report these scores.
+# PAID PILOT (Blueprint §R minimum viable experiment): HotpotQA, 20 questions,
+# Random vs KET-RAG at 10% and 100% budget = 4 conditions. Costs a few cents.
+#   python -m experiments.run --config configs/pilot_hotpotqa.yaml --dry-run          # free estimate
+#   python -m experiments.run --config configs/pilot_hotpotqa.yaml --confirm-paid --max-total-usd 0.50
+# Checks: (1) both strategies give identical scores at 100%, (2) a re-run makes 0 new paid calls.
+experiment_id: pilot_hotpotqa_mock
+seed: 42
+
+dataset: hotpotqa
+strategy: random
+budget: 0.10
+
+data_source: huggingface
+num_questions: 20
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+embedding_backend: sentence-transformers
+ketrag_mode: faithful
+
+extraction_backend: mock
+generation_backend: mock
+judge_backend: mock
+extraction_max_cost_usd: 0.50
+
+cache_dir: cache
+output_dir: results
+
+matrix:
+  datasets: [hotpotqa]
+  strategies: [random, ketrag]
+  budgets: [0.10, 1.0]
