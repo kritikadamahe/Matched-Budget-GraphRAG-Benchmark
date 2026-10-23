@@ -73,6 +73,8 @@ class Judge:
              "prompt_version": self.prompt_version, "seed": GENERATION_SEED}
         if self.client is not None:
             s.update(temperature=self.client.temperature, max_output_tokens=self.client.max_output_tokens)
+            if getattr(self.client, "reasoning_effort", None):
+                s["reasoning_effort"] = self.client.reasoning_effort
         return s
 
     def estimate_cost_usd(self, question: str, reference: str, aliases: list[str], candidate: str) -> float:
@@ -126,7 +128,7 @@ def build_judge(cfg, dry_run: bool = False) -> Judge:
     client = None
     if cfg.judge_backend == "openai":
         client = ChatJSONClient(
-            model=cfg.judge_model, temperature=cfg.judge_temperature,
+            model=cfg.judge_model, temperature=cfg.judge_temperature, reasoning_effort=cfg.judge_reasoning_effort,
             max_output_tokens=cfg.judge_max_output_tokens, max_retries=cfg.judge_max_retries,
             timeout_s=cfg.judge_request_timeout_s, price_input_per_1m=cfg.judge_price_input_per_1m,
             price_output_per_1m=cfg.judge_price_output_per_1m,

@@ -138,6 +138,7 @@ class OpenAIExtractor(Extractor):
         price_input_per_1m: float = 0.15,
         price_output_per_1m: float = 0.60,
         api_key: str | None = None,
+        reasoning_effort: str | None = None,
         client=None,
         sleep=time.sleep,
         backoff_base_s: float = 1.0,
@@ -145,6 +146,7 @@ class OpenAIExtractor(Extractor):
     ):
         self.model = model
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
         self.max_retries = max_retries
         self.timeout_s = timeout_s
@@ -177,7 +179,8 @@ class OpenAIExtractor(Extractor):
     def cache_settings(self) -> dict:
         return {"extractor": self.name, "model": self.model, "prompt_version": PROMPT_VERSION,
                 "schema_version": SCHEMA_VERSION, "temperature": self.temperature,
-                "max_output_tokens": self.max_output_tokens, "seed": EXTRACTION_SEED}
+                "max_output_tokens": self.max_output_tokens, "seed": EXTRACTION_SEED,
+                **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {})}
 
     def estimate_cost_usd(self, item: ExtractionInput) -> float:
         input_tokens = estimate_tokens(item.text) + estimate_tokens(SYSTEM_PROMPT) + PROMPT_FRAMING_TOKENS
@@ -201,6 +204,7 @@ class OpenAIExtractor(Extractor):
                     temperature=self.temperature,
                     max_completion_tokens=self.max_output_tokens,
                     **({} if os.environ.get("OPENAI_BASE_URL", "").strip() else {"seed": EXTRACTION_SEED}),  # non-OpenAI providers may reject seed
+                    **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
                     response_format=RESPONSE_FORMAT,
                 )
             except Exception as exc:                            # noqa: BLE001 - classified below

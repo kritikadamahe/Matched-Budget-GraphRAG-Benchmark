@@ -55,9 +55,11 @@ class ChatJSONClient:
     def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.0, max_output_tokens: int = 512,
                  max_retries: int = 3, timeout_s: float = 60.0, price_input_per_1m: float = 0.15,
                  price_output_per_1m: float = 0.60, client=None, api_key: str | None = None,
-                 sleep=time.sleep, backoff_base_s: float = 1.0, dotenv_path: str | Path | None = None):
+                 sleep=time.sleep, backoff_base_s: float = 1.0, dotenv_path: str | Path | None = None,
+                 reasoning_effort: str | None = None):
         self.model = model
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
         self.max_retries = max_retries
         self.timeout_s = timeout_s
@@ -98,6 +100,7 @@ class ChatJSONClient:
                     model=self.model, messages=messages, temperature=self.temperature,
                     max_completion_tokens=self.max_output_tokens,
                     **({} if os.environ.get("OPENAI_BASE_URL", "").strip() else {"seed": GENERATION_SEED}),  # non-OpenAI providers may reject seed
+                    **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
                     response_format=response_format,
                 )
             except Exception as exc:                             # noqa: BLE001 - classified below

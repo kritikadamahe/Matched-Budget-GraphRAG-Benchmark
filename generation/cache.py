@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from pathlib import Path
 
 from extraction.cache import _safe, canonical_json
@@ -48,7 +49,7 @@ class QueryCache:
             return False
         path = self._path(settings, inputs)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps({"key": self.make_key(settings, inputs), "settings": settings,
                                    "result": result}, indent=1, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)

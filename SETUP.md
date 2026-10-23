@@ -55,6 +55,8 @@ OPENAI_API_KEY=sk-...
 ```
 Leave `OPENAI_BASE_URL` and `LLM_MIN_INTERVAL_S` out. Changing the model changes the cache keys, so a cache built with one provider is not reused by another.
 
+**Speed (paid keys):** add `LLM_WORKERS=8` to `.env` to make 8 API calls at once. Results are identical to a sequential run. Leave `LLM_MIN_INTERVAL_S` out when using it. To skip the LLM judge (EM/F1 only, about half the calls), add `--no-judge` to the run command.
+
 ## 5. Run the pilot
 
 ```bash

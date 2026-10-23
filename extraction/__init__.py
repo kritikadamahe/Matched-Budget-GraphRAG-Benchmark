@@ -28,6 +28,7 @@ def build_extractor(cfg, dry_run: bool = False) -> Extractor:
         return OpenAIExtractor(
             model=cfg.extraction_model,
             temperature=cfg.extraction_temperature,
+            reasoning_effort=cfg.extraction_reasoning_effort,
             max_output_tokens=cfg.extraction_max_output_tokens,
             max_retries=cfg.extraction_max_retries,
             timeout_s=cfg.extraction_request_timeout_s,

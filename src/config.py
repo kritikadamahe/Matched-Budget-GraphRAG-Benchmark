@@ -88,6 +88,7 @@ class ExperimentConfig(BaseModel):
     )
     generation_model: str = Field("gpt-4o-mini", description="Model for answers and L4 relevance checks.")
     generation_temperature: float = Field(0.0, ge=0.0, le=2.0)
+    generation_reasoning_effort: Literal["none", "low", "medium", "high"] | None = Field(None, description="Optional reasoning_effort sent to the provider (e.g. Cerebras qwen: 'none' disables thinking). Unset = not sent.")
     generation_max_output_tokens: int = Field(512, gt=0, description="Cap on one answer reply (reasoning + answer).")
     generation_max_retries: int = Field(3, ge=0)
     generation_request_timeout_s: float = Field(60.0, gt=0)
@@ -107,6 +108,7 @@ class ExperimentConfig(BaseModel):
         ),
     )
     judge_temperature: float = Field(0.0, ge=0.0, le=2.0)
+    judge_reasoning_effort: Literal["none", "low", "medium", "high"] | None = Field(None, description="Optional reasoning_effort sent to the provider (e.g. Cerebras qwen: 'none' disables thinking). Unset = not sent.")
     judge_max_output_tokens: int = Field(256, gt=0, description="Cap on one judge reply (a short reason + a verdict).")
     judge_max_retries: int = Field(3, ge=0)
     judge_request_timeout_s: float = Field(60.0, gt=0)
@@ -145,6 +147,7 @@ class ExperimentConfig(BaseModel):
     )
     extraction_model: str = Field("gpt-4o-mini", description="OpenAI model used for extraction.")
     extraction_temperature: float = Field(0.0, ge=0.0, le=2.0, description="0 = as deterministic as possible.")
+    extraction_reasoning_effort: Literal["none", "low", "medium", "high"] | None = Field(None, description="Optional reasoning_effort sent to the provider (e.g. Cerebras qwen: 'none' disables thinking). Unset = not sent.")
     extraction_max_output_tokens: int = Field(
         8192, gt=0,
         description=(

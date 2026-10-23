@@ -1,0 +1,55 @@
+# REDUCED REAL BENCHMARK, 75 questions - same design as benchmark_1m_hotpotqa (which used 30), sized to the remaining Cerebras credit.
+# Pre-specified before any results; do not change after seeing them. Reductions vs the full design are
+# stated in the paper: 75 questions (not 200), 4 budgets (not 6), 700-word retrieval context (not 1500),
+# EM/F1 only (run with --no-judge; the judge is for a later subset), native LazyGraphRAG run separately.
+#   python -m src.prepare_data --config configs/benchmark_75q_hotpotqa.yaml              # free download
+#   python -m experiments.run --config configs/benchmark_75q_hotpotqa.yaml --dry-run      # free plan
+#   python -m experiments.run --config configs/benchmark_75q_hotpotqa.yaml --confirm-paid --no-judge
+experiment_id: benchmark_75q_hotpotqa
+seed: 42
+
+dataset: hotpotqa
+strategy: random
+budget: 0.10
+
+data_source: huggingface
+num_questions: 75
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+embedding_backend: sentence-transformers
+ketrag_mode: faithful
+retrieval_max_context_words: 700
+
+extraction_backend: openai
+generation_backend: openai
+judge_backend: openai
+extraction_model: qwen-3.8-27b
+generation_model: qwen-3.8-27b
+judge_model: gpt-oss-120b                 # different from the generator (self-preference bias)
+extraction_reasoning_effort: none
+generation_reasoning_effort: none
+generation_max_output_tokens: 1024        # 512 cut off 10 of 570 answers (long reasoning on hard questions)
+judge_reasoning_effort: low
+extraction_max_retries: 6
+generation_max_retries: 6
+judge_max_retries: 6
+extraction_max_cost_usd: 1.00
+# Cerebras qwen-3.8-27b prices inferred from the console (smoke test: 28,770 in = $0.03, 19,552 out = $0.03,
+# rounded to the cent); upper ends of the rounding are used so the cost caps err on the safe side.
+extraction_price_input_per_1m: 1.22
+extraction_price_output_per_1m: 1.79
+generation_price_input_per_1m: 1.22
+generation_price_output_per_1m: 1.79
+judge_price_input_per_1m: 0
+judge_price_output_per_1m: 0
+
+cache_dir: cache
+output_dir: results
+
+matrix:
+  datasets: [hotpotqa]
+  strategies: [random, ketrag, lazygraphrag, fastgraphrag]
+  budgets: [0.10, 0.25, 0.50, 1.0]
+  random_seeds: [0, 1, 2]

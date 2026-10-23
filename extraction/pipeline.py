@@ -50,6 +50,7 @@ from extraction.cache import ExtractionCache
 from extraction.schemas import ExtractionInput, ExtractionResult
 from src.budget import select_top_budget, selected_count
 from src.chunking import Chunk
+from src.parallel import SKIPPED, llm_workers, map_ordered_collect
 from src.prepare_data import fingerprint
 
 ESTIMATE_NOTE = (
@@ -184,32 +185,50 @@ def run_extraction(
     results: list[ExtractionResult] = []
     spent = 0.0
     abort: ExtractionAbort | None = None
+    workers = llm_workers()
     try:
-        for n, item in enumerate(items, 1):
-            cached = cache.get(settings, item) if cache is not None else None
-            if cached is not None:
-                results.append(cached)
-            else:
-                if max_cost_usd is not None and spent + extractor.estimate_cost_usd(item) > max_cost_usd:
+        # Items are handled in batches of `workers` (1 = the original one-at-a-time loop). Cached items
+        # are resolved first; the batch's fresh calls run together. The cost cap is checked against
+        # the whole batch's estimate BEFORE any of its calls, so it can overshoot by at most one batch.
+        for b0 in range(0, len(items), workers):
+            batch = items[b0:b0 + workers]
+            cached_by_id = {it.chunk_id: cache.get(settings, it) if cache is not None else None for it in batch}
+            fresh_items = [it for it in batch if cached_by_id[it.chunk_id] is None]
+            if max_cost_usd is not None and fresh_items:
+                batch_est = sum(extractor.estimate_cost_usd(it) for it in fresh_items)
+                if spent + batch_est > max_cost_usd:
                     raise CostCapExceeded(
                         f"spending cap ${max_cost_usd:.4f} reached (spent ${spent:.4f}); stopped "
                         f"after {len(results)} of {len(items)} chunks. Re-run to resume - finished "
                         f"chunks are cached."
                     )
-                result = gate.extract(item)
-                if result.chunk_id != item.chunk_id:
-                    raise BudgetViolation(
-                        f"extractor returned chunk {result.chunk_id} for request {item.chunk_id}"
-                    )
-                # Unknown cost must not look free to the cap guard: assume the estimate.
-                # (Guard only - the result keeps usage=None; nothing is recorded as actual.)
-                spent += (result.usage.cost_usd if result.usage.cost_usd is not None
-                          else extractor.estimate_cost_usd(item))
-                if cache is not None:
-                    cache.put(settings, item, result)
+            outcomes = map_ordered_collect(gate.extract, fresh_items, workers) if fresh_items else []
+            fresh_by_id = dict(zip((it.chunk_id for it in fresh_items), outcomes))
+            failure: BaseException | None = None
+            for it in batch:
+                result = cached_by_id[it.chunk_id]
+                if result is None:
+                    result = fresh_by_id[it.chunk_id]
+                    if isinstance(result, BaseException):
+                        failure = failure or result       # finished neighbours are still kept and cached
+                        continue
+                    if result is SKIPPED:
+                        continue
+                    if result.chunk_id != it.chunk_id:
+                        raise BudgetViolation(
+                            f"extractor returned chunk {result.chunk_id} for request {it.chunk_id}"
+                        )
+                    # Unknown cost must not look free to the cap guard: assume the estimate.
+                    # (Guard only - the result keeps usage=None; nothing is recorded as actual.)
+                    spent += (result.usage.cost_usd if result.usage.cost_usd is not None
+                              else extractor.estimate_cost_usd(it))
+                    if cache is not None:
+                        cache.put(settings, it, result)
                 results.append(result)
+            if failure is not None:
+                raise failure
             if progress is not None:
-                progress(n, len(items))
+                progress(min(b0 + workers, len(items)), len(items))
     except ExtractionAbort as e:
         abort = e
 

@@ -38,6 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import re
 from pathlib import Path
 
@@ -98,7 +99,7 @@ class ExtractionCache:
             "text_sha256": hashlib.sha256(item.text.encode("utf-8")).hexdigest(),
             "result": result.model_copy(update={"cache_hit": False}).model_dump(mode="json"),
         }
-        tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)
         return True
