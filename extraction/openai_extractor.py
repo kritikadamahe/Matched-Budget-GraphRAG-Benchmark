@@ -49,6 +49,8 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from src.throttle import wait_for_slot
 from pydantic import ValidationError
 
 from extraction.base_extractor import ExtractionAbort, Extractor
@@ -136,6 +138,7 @@ class OpenAIExtractor(Extractor):
         price_input_per_1m: float = 0.15,
         price_output_per_1m: float = 0.60,
         api_key: str | None = None,
+        reasoning_effort: str | None = None,
         client=None,
         sleep=time.sleep,
         backoff_base_s: float = 1.0,
@@ -143,6 +146,7 @@ class OpenAIExtractor(Extractor):
     ):
         self.model = model
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
         self.max_retries = max_retries
         self.timeout_s = timeout_s
@@ -167,13 +171,16 @@ class OpenAIExtractor(Extractor):
         except ImportError as e:
             raise ExtractionAbort("The openai package is not installed: pip install openai") from e
         # max_retries=0: we do our own retries so they are counted and testable.
-        return OpenAI(api_key=key, timeout=self.timeout_s, max_retries=0)
+        # Optional: point at any OpenAI-compatible provider (e.g. Gemini's free tier).
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip() or None
+        return OpenAI(api_key=key, base_url=base_url, timeout=self.timeout_s, max_retries=0)
 
     # ------------------------------------------------------- Extractor API
     def cache_settings(self) -> dict:
         return {"extractor": self.name, "model": self.model, "prompt_version": PROMPT_VERSION,
                 "schema_version": SCHEMA_VERSION, "temperature": self.temperature,
-                "max_output_tokens": self.max_output_tokens, "seed": EXTRACTION_SEED}
+                "max_output_tokens": self.max_output_tokens, "seed": EXTRACTION_SEED,
+                **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {})}
 
     def estimate_cost_usd(self, item: ExtractionInput) -> float:
         input_tokens = estimate_tokens(item.text) + estimate_tokens(SYSTEM_PROMPT) + PROMPT_FRAMING_TOKENS
@@ -190,12 +197,14 @@ class OpenAIExtractor(Extractor):
         for attempt in range(1, self.max_retries + 2):          # 1 try + max_retries retries
             attempts = attempt
             try:
+                wait_for_slot()
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=build_messages(item.text),
                     temperature=self.temperature,
                     max_completion_tokens=self.max_output_tokens,
-                    seed=EXTRACTION_SEED,
+                    **({} if os.environ.get("OPENAI_BASE_URL", "").strip() else {"seed": EXTRACTION_SEED}),  # non-OpenAI providers may reject seed
+                    **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
                     response_format=RESPONSE_FORMAT,
                 )
             except Exception as exc:                            # noqa: BLE001 - classified below

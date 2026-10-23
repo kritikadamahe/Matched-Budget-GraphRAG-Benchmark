@@ -65,6 +65,7 @@ from extraction.pipeline import BudgetViolation, run_extraction, select_for_extr
 from extraction.run import make_run_id
 from extraction.schemas import ExtractionInput
 from generation.answerer import build_answerer, summarize_query_usage
+from src.parallel import SKIPPED, llm_workers, map_ordered_collect
 from graph.build import build_from_run_dir
 from graph.graph_builder import load_graph
 from retrieval.ppr_retrieval import retriever_from_config
@@ -362,11 +363,20 @@ def run_condition(cond: Condition, ctx: RunnerContext) -> ConditionResult:
         # 7. generation: gets (question text, context), nothing else ----------------------------
         with _stage(res, "generation") as rec:
             answerer = ctx.comps.build_answerer(cfg)
-            for q, rr in retrieved:
-                answer = answerer.answer(q["question"], rr.context)
+            answers = map_ordered_collect(lambda qr: answerer.answer(qr[0]["question"], qr[1].context),
+                                          retrieved, llm_workers())
+            failure = None
+            for (q, rr), answer in zip(retrieved, answers):
+                if isinstance(answer, BaseException):
+                    failure = failure or answer          # answers finished before it are still kept
+                    continue
+                if answer is SKIPPED or failure is not None:
+                    continue
                 records.append(PredictionRecord.build(
                     {"question_id": q["question_id"], "question": q["question"]}, answer, cfg=cfg, retrieval=rr,
                     generation_settings=answerer.settings(), run_id=run_id))
+            if failure is not None:
+                raise failure
             rec.details = {**summarize_query_usage(answerer.results), "settings": answerer.settings(),
                            "n_predictions": len(records)}
         write_predictions(cond_dir / "predictions.jsonl", records)

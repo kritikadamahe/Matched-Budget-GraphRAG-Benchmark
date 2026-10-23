@@ -54,3 +54,4 @@ data/raw/**
 !data/raw/**/
 !data/raw/.gitkeep
 !data/raw/mock_*
+backup_before_phase12/

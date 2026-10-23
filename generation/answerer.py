@@ -84,6 +84,8 @@ class _QueryLLM:
              "prompt_version": self.prompt_version, "seed": GENERATION_SEED}
         if self.client is not None:
             s.update(temperature=self.client.temperature, max_output_tokens=self.client.max_output_tokens)
+            if getattr(self.client, "reasoning_effort", None):
+                s["reasoning_effort"] = self.client.reasoning_effort
         return s
 
     def _estimate(self, messages: list[dict]) -> float:
@@ -220,6 +222,7 @@ def _client_from_config(cfg, max_output_tokens: int, dry_run: bool):
     from extraction.openai_extractor import DisabledClient
     return ChatJSONClient(
         model=cfg.generation_model, temperature=cfg.generation_temperature,
+        reasoning_effort=cfg.generation_reasoning_effort,
         max_output_tokens=max_output_tokens, max_retries=cfg.generation_max_retries,
         timeout_s=cfg.generation_request_timeout_s,
         price_input_per_1m=cfg.generation_price_input_per_1m,

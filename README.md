@@ -4,7 +4,7 @@ Evaluating retrieval quality vs. LLM extraction cost under fixed budgets,
 comparing Random, KET-RAG, LazyGraphRAG, and FastGraphRAG chunk-selection
 strategies on HotpotQA and MuSiQue.
 
-**Status:** Project foundation, configuration, corpus/chunking pipeline, all four chunk-selection strategies, cached embedding pipeline, LLM extraction, knowledge-graph construction, retrieval, answer generation, and evaluation (EM, F1, and LLM-as-a-Judge) are implemented. The 48-condition experiment runner and cost/runtime aggregation are implemented and mock-tested. Real benchmark runs and Phase 12 analysis, plots, and research conclusions remain pending.
+**Status:** Project foundation, configuration, corpus/chunking pipeline, all four chunk-selection strategies, cached embedding pipeline, LLM extraction, knowledge-graph construction, retrieval, answer generation, and evaluation (EM, F1, and LLM-as-a-Judge) are implemented. The 48-condition experiment runner and cost/runtime aggregation are implemented and mock-tested. The Phase 12 analysis code (loader and gate, per-question statistics, evidence metrics, tables, figures, command line) is implemented and tested on mock and synthetic data only. **No real benchmark has been run: there are no research results, and no research conclusion is claimed anywhere in this repository.**
 
 **Phase numbers** follow the Blueprint's roadmap (§Q). The team's earlier labels differ
 from Phase 4 on, so both are listed:
@@ -23,7 +23,8 @@ from Phase 4 on, so both are listed:
 | 11 | | evaluation (EM, F1, LLM judge) | done |
 | 13 | Phase 10 | experiment runner (48-condition matrix) | done (mock-tested) |
 | 14 | Phase 11 | cost/runtime aggregation | done (mock-tested) |
-| 15 | Phase 12 | analysis, plots, and research conclusions | to do |
+| 15 | Phase 12 | analysis, tables, figures (`analysis/`, see "Analysis (Phase 12)") | implemented (mock- and synthetic-tested; no real results) |
+| - | - | real benchmark run and research conclusions | not started |
 
 | Strategy | File | Blueprint category | How it ranks chunks |
 |---|---|---|---|
@@ -53,7 +54,8 @@ cp .env.example .env   # only needed for REAL extraction (extraction_backend: op
 python3 -m pytest tests/ -v
 ```
 
-Expected: all tests pass. Tests make zero API calls (network access is blocked inside the
+Expected: all tests pass (a few are skipped when optional datasets or packages such as `sentence_transformers`, `httpx` or spaCy are missing; the skip reasons are printed with `-rs`). The Phase 12 tests alone:
+`python3 -m pytest tests/test_analysis_*.py -q`. Tests make zero API calls (network access is blocked inside the
 extraction tests and no API key is visible to them).
 
 ## Build the real corpora (roadmap Phases 2-3)
@@ -336,7 +338,7 @@ The output is written to the matrix's `aggregate/` directory:
 - `conditions.csv` — flattened condition records for analysis.
 - `aggregate.json` — group summaries, exclusions, warnings, and reportability.
 
-**Important:** Missing measurements are not treated as zero. Costs, token usage, and runtimes are reported with their measurement status. Mock results are explicitly non-reportable. Real benchmark runs and Phase 12 analysis remain pending.
+**Important:** Missing measurements are not treated as zero. Costs, token usage, and runtimes are reported with their measurement status. Mock results are explicitly non-reportable. The Phase 12 analysis of these records is described in "Analysis (Phase 12)" below; real benchmark runs have not been made.
 
 ### Random's repeated shuffles, evidence recall, and confidence intervals
 
@@ -352,9 +354,13 @@ comparison fair, following the standard practice for papers with a random baseli
   ends in `__rs<shuffle seed>` (e.g. `hotpotqa__random__b010__seed42__rs1`); `random_shuffle_seed` is the
   matching `ExperimentConfig` field (`strategies/__init__.py` builds `RandomStrategy` from it). Phase 11's
   cell grouping collapses these shuffles like it collapses `seeds`, reporting their mean and spread.
-- **Evidence recall** (the runner's `selection` and `retrieval` stages): the share of each question's gold
-  chunks that were selected for extraction, and of those, the share retrieval actually returned, plus the
-  share of questions where *every* gold chunk was reached (a multi-hop question usually needs all of them).
+- **Evidence recall** (the runner's `selection` and `retrieval` stages): `selection_recall` is the share of each
+  question's gold chunks that were selected for extraction (|G ∩ S| / |G|); `retrieval_recall` is the share of
+  each question's gold chunks that reached the retrieved context (|G ∩ R| / |G|). Both divide by *all* gold
+  chunks, so `retrieval_recall` is **unconditional** (it is not "of those selected") and can never exceed
+  `selection_recall`. The *conditional* variant, |G ∩ R| / |G ∩ S| (given a gold chunk was selected, did retrieval
+  return it?), is not stored by the runner; Phase 12 computes it as `conditional_retrieval_recall`. The runner also
+  reports the share of questions where *every* gold chunk was reached (a multi-hop question usually needs all of them).
   Computed from gold labels the runner keeps aside in memory *before* stripping them from what the pipeline
   sees (blueprint §S: no stage - selector, extractor, retriever or generator - ever receives them). Reported
   as `ConditionResult.evidence` / `ConditionRecord.evidence` (`selection_recall`, `selection_all_gold_rate`,
@@ -368,11 +374,174 @@ comparison fair, following the standard practice for papers with a random baseli
   1,000 resamples, EM / F1 / judge accuracy), written to `ConditionResult.ci95` / `ConditionRecord.ci95` and
   as `<metric>_ci95_low` / `_high` columns in `conditions.csv`. `paired_bootstrap` compares two conditions
   that answered the same questions (e.g. two strategies at one budget), matching per-question scores so
-  question-to-question difficulty cancels out; Phase 12 will use it for strategy-vs-strategy significance.
+  question-to-question difficulty cancels out; Phase 12 (`analysis/`) uses a paired sign-flip permutation test and its own bootstrap for strategy-vs-strategy comparisons; this helper is unchanged.
   Note that this captures uncertainty about *which questions were asked*, not Random's luck in picking
   chunks - that is what `random_seeds` is for.
 
-The local test suite currently passes, including the Phase 11 aggregation tests. Some tests remain skipped because their optional datasets or dependencies are unavailable.
+The local test suite passes, including the Phase 11 aggregation and Phase 12 analysis tests. Some tests remain skipped because their optional datasets or dependencies are unavailable (nothing that needs a real API key or network is run).
+
+## Analysis (Phase 12)
+
+Phase 12 turns a **finished** Phase 10 experiment matrix into a loader-checked per-question table, paired statistics,
+tables (CSV / Markdown / LaTeX), figures (PNG at 300 dpi + PDF) and one machine-readable `summary.json`. It never runs
+an experiment, calls an API, downloads a dataset or touches Git (the current commit hash is only *read* from `.git`
+for provenance).
+
+> **No real benchmark has been run.** Phase 12 was developed and tested on the free mock runs and on *synthetic*
+> matrices produced by the real Phase 10 runner with test doubles. Nothing in this repository is a research result,
+> and no research conclusion is claimed. Mock output is only ever a layout test and is always marked
+> **MOCK — NOT RESULTS**.
+
+### Dependencies
+
+`pip install -r requirements.txt` adds `numpy`, `scipy` (exact binomial tail, library versions recorded in the
+output), `matplotlib` (figures; the Agg backend is used directly, so no display is needed; Pillow comes with it) and
+uses `pydantic` as before. The version bounds in `requirements.txt` are untested lower-bound guesses.
+
+### Commands
+
+```bash
+# 1. A FREE mock matrix from the Phase 10 runner (mock data, mock backends: no key, no network, no cost).
+#    To also exercise Random's repeated shuffles, add  random_seeds: [0, 1, 2]  to the matrix: block of a copy.
+python -m experiments.run --config configs/benchmark_mock.yaml
+
+# 2. Mock data is REFUSED by default (exit code 2, nothing written):
+python -m analysis.run --matrix-dir results/experiments/benchmark_mock
+
+# 3. Check what would be analysed; writes NOTHING:
+python -m analysis.run --matrix-dir results/experiments/benchmark_mock --validate-only --allow-mock-layout-test
+
+# 4. A layout test of the tables and figures. Output: results/experiments/benchmark_mock/analysis/mock_layout_test/
+python -m analysis.run --matrix-dir results/experiments/benchmark_mock --allow-mock-layout-test
+
+# The same, found through the config that produced the matrix:
+python -m analysis.run --config configs/benchmark_mock.yaml --allow-mock-layout-test
+```
+
+For a real matrix (once one exists; `configs/benchmark_real.yaml` is an **unexecuted template**, see below):
+
+```bash
+python -m analysis.run --matrix-dir results/experiments/benchmark_real --validate-only   # gate + checks, writes nothing
+python -m analysis.run --matrix-dir results/experiments/benchmark_real                   # -> .../analysis/real/
+python -m analysis.run --matrix-dir DIR --allow-incomplete                               # missing conditions -> .../analysis/real_partial/
+python -m analysis.run --matrix-dir DIR --metrics f1,judge_accuracy --alpha 0.05 --seed 0 --no-figures
+```
+
+| Option | Meaning |
+|---|---|
+| `--matrix-dir DIR` or `--config CONFIG` | the matrix (exactly one; `--config` resolves `<output_dir>/experiments/<experiment_id>`) |
+| `--validate-only` | run the gate and the checks, print the report, write nothing |
+| `--allow-incomplete` | accept a real matrix that is missing planned conditions; output is marked PARTIAL RUN |
+| `--allow-mock-layout-test` | accept mock data for a layout test only; output is marked MOCK — NOT RESULTS |
+| `--out-dir DIR` | output root (default `<matrix-dir>/analysis`) |
+| `--no-figures`, `--formats csv,md,tex`, `--figure-formats png,pdf`, `--dpi 300` | what to write |
+| `--metrics f1,judge_accuracy,em` | quality metrics to write (default all; never changes a p-value) |
+| `--alpha 0.05`, `--n-resamples 10000`, `--n-permutations 20000`, `--seed 0` | significance level, bootstrap resamples (>= 100), sign-flip permutations when the exact test is infeasible (>= 100), base seed |
+| `--evidence off\|auto\|require`, `--corpus-root DIR`, `--allow-rebuild` | evidence metrics (below); `--allow-rebuild` may download a dataset and is off by default |
+
+Exit codes: `0` clean · `1` finished with warnings (a partial run, attrition above 2%, skipped tests, evidence issues,
+excluded conditions) · `2` stopped (bad arguments, refused input, failed validation). A stop writes nothing.
+
+### Output and the mock / real / partial separation
+
+`<out-dir>` gets one sub-folder per data status, so the three can never be mixed:
+
+| Folder | Data | File names | Marker |
+|---|---|---|---|
+| `mock_layout_test/` | mock (explicit opt-in) | figures `MOCK_*` | `MOCK_NOT_RESULTS.txt` |
+| `real_partial/` | real but incomplete (explicit opt-in) | figures `PARTIAL_*` | `PARTIAL_RUN.txt` |
+| `real/` | real and complete | plain | none |
+
+Each holds `summary.json`, `tables/`, `figures/` and `run_manifest.json` (the options, every check, and the SHA-256 of
+every file written). Mock tables carry `MOCK — NOT RESULTS` in every row / banner / caption, mock figures a large
+diagonal watermark; partial figures an orange PARTIAL RUN banner. For mock data **no test is run**: p-values,
+intervals of differences, Holm / BH adjustments and significance marks are empty by construction, and the summary
+contains no findings. Mixed mock + real matrices are refused even with the opt-in flags. Outputs contain no timestamps:
+the same input and options give byte-identical files (under the same library versions).
+
+### The gate and the validation report
+
+Before anything is written the matrix must pass: the Phase 11 aggregation (duplicates, mixed configurations,
+unreadable results stop here), the mock check (runner flag, config, per-answer backend labels), reportability,
+**question alignment** (one question seed, one corpus and the same question ids in every condition of a dataset),
+per-item integrity (scored / predictions / condition result agree), and the validation report (matrix completeness,
+Random's shuffle seeds, evidence reconciliation, input files re-hashed and unchanged, git commit). *Limit: "real"
+means "labelled non-mock throughout and internally consistent"; the saved files cannot prove that a real API produced
+the answers.*
+
+### Metrics
+
+Per question (the **statistical unit is the question**):
+
+- **F1** and **judge accuracy** (primary), **EM** (secondary). An abstention ("not found") scores 0 on all three
+  (the Phase 8 rule). A failed generation, a failed judge call or a question with no prediction is **missing**, not 0.
+- **Abstention rate** = abstained / questions whose generation did not fail (answered + abstained + empty): the
+  runner's own `abstentions.rate_of_scored`. Counted, not tested; failures and missing predictions are reported next
+  to it. A Random cell is the mean of its per-shuffle rates (min–max shown).
+- **Cost, tokens, runtime**: means over measured conditions only (Phase 11 measures); lower bounds and unknowns are
+  counted, never mixed in. Cached extraction can make cost and runtime depend on run order.
+
+**Evidence metrics** (gold chunks G, selected chunks S from `selection.json`, retrieved chunks R = the chunks whose text
+was in the context after the context-word cap; gold is read only *after* the run, never by the pipeline):
+
+| Metric | Formula | Question answered |
+|---|---|---|
+| `selection_recall` | \|G ∩ S\| / \|G\| | did selection choose the gold chunks? |
+| `retrieval_recall` | \|G ∩ R\| / \|G\| | **unconditional**: did the gold chunks reach the context? This is what the runner stores as `retrieval_recall` |
+| `conditional_retrieval_recall` | \|G ∩ R\| / \|G ∩ S\| | given a gold chunk *was selected*, did retrieval return it? (Phase 12 only) |
+| `all_gold_selected`, `all_gold_retrieved` | 1 if G ⊆ S (resp. R), else 0 | multi-hop questions usually need every gold chunk |
+| `all_gold_retrieved_given_selected` | 1 if G ⊆ R, defined only when G ⊆ S | |
+
+Hence `retrieval_recall = selection_recall × conditional_retrieval_recall`, and `retrieval_recall <= selection_recall`.
+A question with no gold chunks, or where a metric's condition is not met, is *undefined* (with a reason), never 0.
+Evidence needs the gold labels written by `python -m src.prepare_data --config <config>` (`data/corpus/<corpus_id>/chunks.json`);
+with `--evidence auto` (default) a missing file skips the evidence outputs with a note, `require` stops. A gold file of
+the wrong corpus (chunk count / chunk-id fingerprint) or a mismatch with the runner's stored figures always stops the
+run. Not supported in v1: answer-in-context rate, entity-level recall, retrieval precision.
+
+### Statistical methodology
+
+- **Unit and pairing.** One value per question per arm. Strategies are compared *paired* on the same questions.
+- **Random's shuffles.** Random runs once per shuffle seed on the same questions; its per-question value is the mean over
+  the shuffles that have a measured score. n is the number of questions, never questions × shuffles. Its selection luck
+  is shown separately (`random_variability_*`: one dot per shuffle); it is not part of any interval.
+- **Missing data.** Primary analysis: *complete case* (questions with a value in both arms). Sensitivity analysis:
+  missing scored as wrong. Every cell reports its missing counts and reasons; attrition above 2% is a warning.
+- **Test.** Two-sided paired sign-flip permutation test on the per-question differences: exact enumeration up to 16
+  non-zero differences, exact binomial when all |d| are equal, otherwise Monte Carlo with p = (1 + count) / (B + 1)
+  (B = `--n-permutations`); all differences zero gives p = 1. For single-run binary arms an exact McNemar test is also
+  shown; it is algebraically identical to the sign-flip test, a consistency check and **not** independent confirmation.
+- **Intervals.** Percentile bootstrap over questions (10,000 resamples, 95%) for each arm's mean and for each paired
+  mean difference. Seeds come from SHA-256 of the cell identity and `--seed`, so results are reproducible. Intervals
+  describe which questions were asked, not Random's luck.
+- **Effect sizes.** Mean difference (A − B), Cohen's d_z (mean / SD of the differences) and the counts of
+  A-better / B-better / tied questions.
+- **Multiple testing.** One *family* = all pairwise strategy comparisons of one (dataset, metric, missing-policy) over the
+  budgets below 100% (the pre-specified design: 6 pairs × 5 budgets = 30 tests). Holm (confirmatory) and
+  Benjamini–Hochberg (exploratory) adjust within a family only, α = 0.05. F1 and judge accuracy are the primary
+  metrics; EM is secondary. A skipped test (missing condition) is reported and marks its family incomplete.
+- **100% budget anchor.** At full budget every strategy sees the same chunks, so outcomes should be identical. This is a
+  sanity check, never a hypothesis test; a mismatch (with identical selected chunks) is reported as "investigate", never
+  forced to equality. Only the selected chunks are verified.
+
+### Limitations
+
+- No real data has been analysed; all tests use mock or synthetic matrices. The mock/real gate cannot prove a real API produced the answers.
+- One question seed and (in the pre-specified design) 200 questions per dataset: conclusions would hold for those questions only.
+- The paired test treats questions as independent and assumes the sign of each difference is exchangeable under the null; the LLM judge adds its own noise and possible self-preference bias (set a judge model different from the generator).
+- Holm / BH correct within a family, not across datasets or metrics; with 3 Random shuffles the shuffle spread is a crude estimate.
+- Monte Carlo p-values have resolution 1 / (B + 1); exact when the number of non-zero differences is small.
+- Cost and runtime depend on the extraction cache and on run order.
+- Abstention rate is in `summary.json` and the figures, not in the tables.
+- Not available: answer-in-context, entity-level recall, retrieval precision; evidence needs the gold labels on disk.
+
+### The real benchmark config is an unexecuted template
+
+`configs/benchmark_real.yaml` describes the pre-specified real design (2 datasets × 6 budgets × (3 Random shuffles + 3
+other strategies) = 72 conditions, question seed 42, 200 questions per dataset, real extraction / generation / judge).
+**It has never been run.** It deliberately has no judge model (`REPLACE_ME_JUDGE_MODEL`) and a tiny extraction cost cap
+so that an unreviewed run stops early; its header lists the human steps (check prices, `src.prepare_data`, `--dry-run`,
+raise the cap, then `--confirm-paid`). Running it costs real money and needs `OPENAI_API_KEY`.
 
 ## Project structure
 
@@ -391,6 +560,7 @@ generation/     answer generation + native L4 relevance check, mock/OpenAI (Blue
 evaluation/     EM/F1/LLM-judge + bootstrap confidence intervals (Blueprint Phase 11)
 experiments/    experiment runner over the matched-budget matrix (Blueprint Phase 13)
 aggregation/    cost/runtime/evidence aggregation into per-condition and group summaries (Blueprint Phase 14)
+analysis/       Phase 12: loader and gate, statistics, evidence metrics, summary, tables, figures, CLI (`python -m analysis.run`)
 results/        run outputs (not committed)
 notebooks/      analysis notebooks (Phase 15, not started)
 tests/          one test file per component

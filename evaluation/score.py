@@ -52,6 +52,7 @@ from evaluation.schemas import (EVAL_SCHEMA_VERSION, GoldAnswer, JudgeResult, Pr
 from extraction.base_extractor import ExtractionAbort
 from generation.answerer import summarize_query_usage
 from generation.prompts import NOT_FOUND
+from src.parallel import SKIPPED, llm_workers, map_ordered_collect
 
 GENERATION_OK = ("ok", "skipped_empty_context")
 JUDGE_FAILURES = ("api_error", "malformed", "refused", "truncated")
@@ -182,15 +183,17 @@ def score_predictions(records: list[PredictionRecord], gold: dict[str, GoldAnswe
     t0 = time.perf_counter()
     scored: list[ScoredRecord] = []
     aborted: ExtractionAbort | None = None
-    for rec in records:
-        g = gold[rec.question_id]
-        if aborted is None:
-            try:
-                scored.append(score_record(rec, g, judge))
-                continue
-            except ExtractionAbort as e:
-                aborted = e
-        scored.append(score_record(rec, g, None, no_judge_status="not_run"))
+    outcomes = map_ordered_collect(lambda rec: score_record(rec, gold[rec.question_id], judge), records,
+                                   llm_workers())
+    for rec, out in zip(records, outcomes):
+        if isinstance(out, ExtractionAbort):
+            aborted = aborted or out
+        elif isinstance(out, BaseException):
+            raise out
+        if aborted is None and not isinstance(out, BaseException) and out is not SKIPPED:
+            scored.append(out)
+        else:
+            scored.append(score_record(rec, gold[rec.question_id], None, no_judge_status="not_run"))
 
     summary = summarize(scored, records, judge, aborted, started, time.perf_counter() - t0)
     return EvaluationRun(scored=scored, summary=summary)

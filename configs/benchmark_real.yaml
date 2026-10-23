@@ -1,0 +1,68 @@
+# ======================================================================================================
+# TEMPLATE FOR THE REAL BENCHMARK  -  NOT EXECUTED  -  THIS FILE WAS NEVER RUN
+# ======================================================================================================
+# Nothing has been run with this config. No API call was made, no dataset was downloaded, and no result
+# exists. It is a starting point for the real matrix and COSTS REAL MONEY if you run it.
+#
+# Before anything is run, a human must:
+#   1. Replace every REPLACE_ME value below (the judge model has NO default on purpose: pick a model that is
+#      different from the generator, or document why not - self-preference bias, see the README).
+#   2. Check all *_price_* values against the provider's current pricing page (they are list-price guesses).
+#   3. Download the data (free):          python -m src.prepare_data --config configs/benchmark_real.yaml
+#   4. Plan and estimate the cost (free): python -m experiments.run --config configs/benchmark_real.yaml --dry-run
+#   5. Raise extraction_max_cost_usd from its deliberately tiny value to a cap you have approved.
+#   6. Only then, with OPENAI_API_KEY set:  python -m experiments.run --config configs/benchmark_real.yaml --confirm-paid
+#      (a real run refuses to start without --confirm-paid; a missing key stops it before any condition begins).
+#
+# Design (pre-specified; do not change after seeing results):
+#   * 2 datasets x 6 budgets x (3 Random shuffles + 3 other strategies) = 72 conditions, one question seed (42),
+#     200 questions per dataset. Random is repeated on 3 shuffles of the SAME questions; the other strategies are
+#     deterministic and run once. The shuffles are one strategy's luck, never extra samples.
+#   * The 100% budget is a sanity-check anchor (every strategy sees the same chunks), not a hypothesis test.
+#
+# The analysis (python -m analysis.run) refuses any matrix that contains mock data, and refuses an incomplete one
+# unless --allow-incomplete is given (the output is then marked PARTIAL RUN).
+experiment_id: benchmark_real
+seed: 42                        # picks the questions (and so the corpus); the same for every condition
+
+# Placeholders required by ExperimentConfig: every condition overrides dataset, strategy and budget.
+dataset: hotpotqa
+strategy: random
+budget: 0.10
+
+data_source: huggingface        # real data; the first prepare_data run downloads it
+num_questions: 200
+
+chunk_size_words: 250
+chunk_overlap_words: 40
+
+embedding_backend: sentence-transformers
+embedding_model: all-MiniLM-L6-v2
+ketrag_mode: faithful
+fast_use_spacy: true
+
+# --- the three paid stages (all real) ---
+extraction_backend: openai
+extraction_model: gpt-4o-mini
+extraction_price_input_per_1m: 0.15     # REVIEW against the pricing page
+extraction_price_output_per_1m: 0.60    # REVIEW against the pricing page
+extraction_max_cost_usd: 1.0            # REPLACE_ME after the dry-run estimate: deliberately tiny so an unreviewed run stops early
+
+generation_backend: openai
+generation_model: gpt-4o-mini
+generation_price_input_per_1m: 0.15     # REVIEW against the pricing page
+generation_price_output_per_1m: 0.60    # REVIEW against the pricing page
+
+judge_backend: openai
+judge_model: REPLACE_ME_JUDGE_MODEL     # REPLACE_ME: a model different from the generator (a real name is required to run)
+judge_price_input_per_1m: 0.15          # REPLACE_ME: the judge model's price
+judge_price_output_per_1m: 0.60         # REPLACE_ME: the judge model's price
+
+cache_dir: cache
+output_dir: results
+
+matrix:
+  datasets: [hotpotqa, musique]
+  strategies: [random, ketrag, lazygraphrag, fastgraphrag]
+  budgets: [0.05, 0.10, 0.25, 0.50, 0.75, 1.0]
+  random_seeds: [0, 1, 2]

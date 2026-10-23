@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from src.throttle import wait_for_slot
 from pydantic import BaseModel, ValidationError
 
 from extraction.base_extractor import ExtractionAbort
@@ -53,9 +55,11 @@ class ChatJSONClient:
     def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.0, max_output_tokens: int = 512,
                  max_retries: int = 3, timeout_s: float = 60.0, price_input_per_1m: float = 0.15,
                  price_output_per_1m: float = 0.60, client=None, api_key: str | None = None,
-                 sleep=time.sleep, backoff_base_s: float = 1.0, dotenv_path: str | Path | None = None):
+                 sleep=time.sleep, backoff_base_s: float = 1.0, dotenv_path: str | Path | None = None,
+                 reasoning_effort: str | None = None):
         self.model = model
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.max_output_tokens = max_output_tokens
         self.max_retries = max_retries
         self.timeout_s = timeout_s
@@ -77,7 +81,9 @@ class ChatJSONClient:
             from openai import OpenAI
         except ImportError as e:
             raise ExtractionAbort("The openai package is not installed: pip install openai") from e
-        return OpenAI(api_key=key, timeout=self.timeout_s, max_retries=0)
+        # Optional: point at any OpenAI-compatible provider (e.g. Gemini's free tier).
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip() or None
+        return OpenAI(api_key=key, base_url=base_url, timeout=self.timeout_s, max_retries=0)
 
     def call(self, messages: list[dict], response_format: dict, output_model: type[BaseModel],
              label: str = "") -> CallOutcome:
@@ -89,9 +95,12 @@ class ChatJSONClient:
         for attempt in range(1, self.max_retries + 2):           # 1 try + max_retries retries
             attempts = attempt
             try:
+                wait_for_slot()
                 response = self.client.chat.completions.create(
                     model=self.model, messages=messages, temperature=self.temperature,
-                    max_completion_tokens=self.max_output_tokens, seed=GENERATION_SEED,
+                    max_completion_tokens=self.max_output_tokens,
+                    **({} if os.environ.get("OPENAI_BASE_URL", "").strip() else {"seed": GENERATION_SEED}),  # non-OpenAI providers may reject seed
+                    **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
                     response_format=response_format,
                 )
             except Exception as exc:                             # noqa: BLE001 - classified below
