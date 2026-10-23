@@ -26,3 +26,8 @@ pyarrow>=15
 
 # Phase 4: LLM extraction (real OpenAI extractor; the mock extractor and all tests do not need a key)
 openai>=1.40,<3
+
+# Phase 12: analysis (paired tests, bootstrap, figures). Tested with scipy 1.18 and matplotlib 3.11;
+# the lower bounds below are untested guesses (numpy>=2.1 needs a recent scipy/matplotlib).
+scipy>=1.14,<2
+matplotlib>=3.9,<4
