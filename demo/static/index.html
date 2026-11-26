@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matched-Budget GraphRAG</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%224%22 fill=%22%232a78d6%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">MB</div>
+    <div>
+      <div class="brand-title">Matched-Budget GraphRAG</div>
+      <div class="brand-sub">Chunk selection under fixed extraction budgets</div>
+    </div>
+  </div>
+  <nav id="tabs">
+    <button data-tab="idea" class="active">1 · The idea</button>
+    <button data-tab="budget">2 · Budget explorer</button>
+    <button data-tab="ask">3 · Ask the pipeline</button>
+    <button data-tab="compare">4 · Compare</button>
+    <button data-tab="results">5 · Results</button>
+    <span class="nav-sep"></span>
+    <button data-tab="planner" class="nav-cta">Budget planner</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============================================================ 1. IDEA -->
+  <section id="tab-idea" class="tab active">
+    <div class="hero">
+      <h1>Which chunks are worth paying an LLM to read?</h1>
+      <p class="lead">GraphRAG makes one LLM call per chunk to build its knowledge graph, so indexing cost grows
+        with the corpus. If we can only afford to extract a share <b>B</b> of the chunks, does a clever
+        selector pick better chunks than a random one?</p>
+    </div>
+
+    <div class="pipeline" id="pipeline"></div>
+    <p class="caption">Everything except the selector is held fixed. Any difference in answer quality at a budget
+      <b>B</b> comes from <i>which</i> chunks went to the extractor.</p>
+
+    <div class="cards4">
+      <div class="scard"><span class="dot" style="--c:var(--s-random)"></span><h3>Random</h3><p>Seeded shuffle. The baseline every selector has to beat.</p></div>
+      <div class="scard"><span class="dot" style="--c:var(--s-ketrag)"></span><h3>KET-RAG-style</h3><p>PageRank on a chunk graph (keyword + embedding neighbours, K=2).</p></div>
+      <div class="scard"><span class="dot" style="--c:var(--s-lazygraphrag)"></span><h3>Topic coverage</h3><p>k-means topics, most typical chunk per topic, round-robin. From LazyGraphRAG.</p></div>
+      <div class="scard"><span class="dot" style="--c:var(--s-fastgraphrag)"></span><h3>Entity centrality</h3><p>Sum of entity co-occurrence degrees per chunk. From Fast GraphRAG.</p></div>
+    </div>
+    <p class="note">None of the selectors use an LLM or see the questions. Gold labels are used only for evaluation.</p>
+
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <!-- ============================================================ 2. BUDGET -->
+  <section id="tab-budget" class="tab">
+    <div class="toolbar">
+      <div class="ctl">
+        <label>Extraction budget <b id="budget-val">10%</b></label>
+        <input type="range" id="budget-range" min="1" max="100" value="10">
+      </div>
+      <div class="ctl">
+        <label>Highlight gold evidence for</label>
+        <select id="budget-q"><option value="">all 75 questions</option></select>
+      </div>
+      <button class="btn ghost" id="budget-play">▶ Sweep 1→100%</button>
+    </div>
+    <p class="hint">Each square is one of the <b id="n-chunks"></b> chunks in the pooled HotpotQA corpus. Filled = sent to the
+      LLM extractor. Gold-bordered = a supporting paragraph a question needs.</p>
+    <div class="grids" id="grids"></div>
+    <div class="legend-row">
+      <span><i class="sw sel"></i> selected</span>
+      <span><i class="sw gold"></i> gold, missed</span>
+      <span><i class="sw sel gold"></i> gold, selected</span>
+      <span><i class="sw"></i> not extracted</span>
+    </div>
+  </section>
+
+  <!-- ============================================================ 3. ASK -->
+  <section id="tab-ask" class="tab">
+    <div class="ask-grid">
+      <aside class="panel">
+        <h3>Question</h3>
+        <select id="ask-q" size="10"></select>
+        <details id="custom-box">
+          <summary>…or type your own</summary>
+          <textarea id="ask-custom" rows="3" placeholder="e.g. Which band released With or Without You?"></textarea>
+          <p class="tiny" id="live-note"></p>
+        </details>
+        <h3>Selector</h3>
+        <div class="seg" id="ask-strategy"></div>
+        <h3>Budget</h3>
+        <div class="seg" id="ask-budget"></div>
+        <button class="btn primary big" id="ask-run">Run pipeline →</button>
+        <p class="tiny">Runs the real retriever and answer generator on the knowledge graph built for this
+          condition. Benchmark questions come from the answer cache, so they cost nothing.</p>
+      </aside>
+      <div id="ask-out" class="ask-out">
+        <div class="empty">Pick a question, a selector and a budget, then press <b>Run pipeline</b>.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 4. COMPARE -->
+  <section id="tab-compare" class="tab">
+    <div class="toolbar">
+      <div class="ctl wide">
+        <label>Question</label>
+        <select id="cmp-q"></select>
+      </div>
+    </div>
+    <div id="cmp-head" class="cmp-head"></div>
+    <div id="cmp-table"></div>
+    <p class="hint">Every cell is the answer logged by the benchmark run for that selector and budget. Random shows its
+      three shuffles. Click a cell to replay it in <b>Ask the pipeline</b>.</p>
+    <h3 class="sec">Across all 75 questions: mean token F1</h3>
+    <div id="cmp-overall"></div>
+  </section>
+
+  <!-- ============================================================ 5. RESULTS -->
+  <section id="tab-results" class="tab">
+    <div class="res-grid">
+      <div class="panel">
+        <h3>Selection study: 500 questions per dataset, no LLM</h3>
+        <p class="tiny">Selection recall of gold supporting chunks against budget. Oracle = upper bound that picks gold chunks first.</p>
+        <div class="seg small" id="ss-ds"></div>
+        <div id="chart-sel" class="chart"></div>
+      </div>
+      <div class="panel">
+        <h3>End-to-end: 75 HotpotQA questions</h3>
+        <p class="tiny">Token F1 of the generated answers, with 95% bootstrap intervals. Random = mean of 3 shuffles.</p>
+        <div id="chart-e2e" class="chart"></div>
+      </div>
+    </div>
+    <div class="takeaways">
+      <div><b>1.</b> The selectors keep about as much gold evidence as random, within ~8 points at every budget, and never significantly better at 5% or 10%.</div>
+      <div><b>2.</b> An oracle keeps all gold evidence at 25%. At budgets up to 25% the selectors close only ~8% of that gap.</div>
+      <div><b>3.</b> End to end, F1 rises from 0.07 (10%) to 0.61 (100%). None of 18 strategy-vs-random comparisons is significant after Holm correction.</div>
+      <div class="big"><b>On pooled multi-hop QA corpora, <u>how much</u> you extract matters far more than <u>which</u> of these selectors picks it.</b></div>
+    </div>
+  </section>
+  <!-- ============================================================ PLANNER -->
+  <section id="tab-planner" class="tab">
+    <div class="pl-hero">
+      <div>
+        <div class="eyebrow">Tool · GraphRAG Budget Planner</div>
+        <h1>How much GraphRAG should you buy?</h1>
+        <p class="lead">Find the smallest LLM extraction budget that keeps answer quality on <b>your</b> documents,
+          before you pay to index all of them.</p>
+      </div>
+      <ol class="pl-how">
+        <li><b>Upload</b> your documents. Cost projection is instant and free.</li>
+        <li><b>Pilot</b> on a sample: auto-written test questions, every budget, hard spending cap.</li>
+        <li><b>Decide</b> with a report: recommended budget, projected cost, savings, vector-RAG baseline.</li>
+      </ol>
+    </div>
+
+    <div class="pl-setup">
+      <div class="panel pl-card" id="pl-docs">
+        <div class="pl-card-h"><span class="pl-n">1</span><h3>Documents</h3></div>
+        <label class="drop" id="pl-drop">
+          <input type="file" id="pl-files" multiple hidden>
+          <div class="drop-ic">⇪</div>
+          <div><b>Drop files here</b> or click to browse</div>
+          <div class="tiny" id="pl-formats"></div>
+        </label>
+        <div id="pl-corpus" class="pl-corpus"></div>
+        <div class="or"><span>or</span></div>
+        <button class="btn" id="pl-sample">Use the sample corpus (HotpotQA, 759 chunks)</button>
+      </div>
+
+      <div class="panel pl-card" id="pl-pricing">
+        <div class="pl-card-h"><span class="pl-n">2</span><h3>Model &amp; cost</h3></div>
+        <div class="form-grid">
+          <label>Extraction model<input id="pl-model" type="text"></label>
+          <label>Input $ / 1M tokens<input id="pl-pin" type="number" step="0.01" min="0"></label>
+          <label>Output $ / 1M tokens<input id="pl-pout" type="number" step="0.01" min="0"></label>
+          <label>Quality target <b id="pl-target-v">90%</b><input id="pl-target" type="range" min="70" max="100" step="5" value="90"></label>
+        </div>
+        <div id="pl-costs" class="pl-costs"><p class="tiny">Add documents to see the cost of indexing them.</p></div>
+      </div>
+
+      <div class="panel pl-card" id="pl-pilot">
+        <div class="pl-card-h"><span class="pl-n">3</span><h3>Pilot run</h3></div>
+        <div class="form-grid">
+          <label>Test questions<input id="pl-nq" type="number" min="10" max="150" value="30"></label>
+          <label>Sample size (chunks)<input id="pl-ns" type="number" min="30" max="2000" value="200"></label>
+          <label>Spending cap ($)<input id="pl-cap" type="number" min="0.05" step="0.05" value="1.00"></label>
+          <label>Production selector<select id="pl-primary"></select></label>
+        </div>
+        <div class="tiny" style="margin:8px 0 4px">Compare selectors</div>
+        <div class="checks" id="pl-strats"></div>
+        <div id="pl-estimate" class="pl-estimate"></div>
+        <button class="btn primary big" id="pl-run" disabled>Run pilot</button>
+        <div id="pl-run-note" class="tiny"></div>
+        <div id="pl-progress" class="pl-progress"></div>
+      </div>
+    </div>
+
+    <div id="pl-report" class="pl-report">
+      <div class="empty">Your report appears here. <button class="btn" id="pl-example">Open the example report</button></div>
+    </div>
+  </section>
+</main>
+
+<div id="tooltip" class="tooltip"></div>
+<div id="loading" class="loading">Loading benchmark data…</div>
+<script src="app.js"></script>
+<script src="planner.js"></script>
+</body>
+</html>
