@@ -4,7 +4,7 @@ Evaluating retrieval quality vs. LLM extraction cost under fixed budgets,
 comparing Random, KET-RAG, LazyGraphRAG, and FastGraphRAG chunk-selection
 strategies on HotpotQA and MuSiQue.
 
-**Status:** Project foundation, configuration, corpus/chunking pipeline, all four chunk-selection strategies, cached embedding pipeline, LLM extraction, knowledge-graph construction, retrieval, answer generation, and evaluation (EM, F1, and LLM-as-a-Judge) are implemented. The 48-condition experiment runner and cost/runtime aggregation are implemented and mock-tested. The Phase 12 analysis code (loader and gate, per-question statistics, evidence metrics, tables, figures, command line) is implemented and tested on mock and synthetic data only. **No real benchmark has been run: there are no research results, and no research conclusion is claimed anywhere in this repository.**
+**Status:** The full pipeline is implemented: configuration, corpus/chunking, the four chunk-selection strategies, cached embeddings, LLM extraction, knowledge-graph construction, retrieval, answer generation, evaluation (EM, F1, optional LLM judge), the experiment runner, cost/runtime aggregation, and the Phase 12 analysis. Two reduced real experiments have been run: (1) an LLM-free **selection study** (500 questions per dataset on HotpotQA and MuSiQue, no API cost) and (2) an **end-to-end benchmark** on 75 HotpotQA questions (24 conditions, Qwen3.8-27B on Cerebras, EM/F1 only, no LLM judge). The differences between strategies are small and mostly not statistically significant; see "Results" below. The pre-specified full design (`configs/benchmark_real.yaml`: 72 conditions, 200 questions per dataset, LLM judge) has **not** been run.
 
 **Phase numbers** follow the Blueprint's roadmap (§Q). The team's earlier labels differ
 from Phase 4 on, so both are listed:
@@ -23,8 +23,9 @@ from Phase 4 on, so both are listed:
 | 11 | | evaluation (EM, F1, LLM judge) | done |
 | 13 | Phase 10 | experiment runner (48-condition matrix) | done (mock-tested) |
 | 14 | Phase 11 | cost/runtime aggregation | done (mock-tested) |
-| 15 | Phase 12 | analysis, tables, figures (`analysis/`, see "Analysis (Phase 12)") | implemented (mock- and synthetic-tested; no real results) |
-| - | - | real benchmark run and research conclusions | not started |
+| 15 | Phase 12 | analysis, tables, figures (`analysis/`, see "Analysis (Phase 12)") | done; applied to the real 75-question matrix (tests use mock and synthetic data) |
+| - | - | reduced real runs (selection study 500 q x 2 datasets; end-to-end 75 q on HotpotQA) | done |
+| - | - | full pre-specified design (72 conditions, 200 q per dataset, LLM judge) | not run |
 
 | Strategy | File | Blueprint category | How it ranks chunks |
 |---|---|---|---|
@@ -40,6 +41,48 @@ KET-RAG (faithful mode), LazyGraphRAG L3 and the native L4 share one local embed
 (see "Embeddings" below):
 `pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install sentence-transformers`
 (CPU-only torch is enough, ~200 MB; the model all-MiniLM-L6-v2 downloads on first use, ~90 MB).
+
+## Results
+
+Two reduced real runs. Numbers are from `results/selection_study/hotpotqa_musique_500q/` and
+`results/experiments/benchmark_75q_hotpotqa/analysis/real/`. They describe these question samples only, and they are
+neither confirmatory nor a replication.
+
+**Selection study** (no LLM; HotpotQA and MuSiQue, 500 questions each, budgets 5/10/25/50/75%, 10 Random shuffles).
+Selection recall is the share of a question's gold chunks that the selector keeps.
+
+- The three selectors stay within about 8 percentage points of Random's selection recall at every budget.
+- The gain is significant after Holm correction only on MuSiQue at budgets of 25% and above (KET-RAG and topic
+  coverage), and never at 5% or 10%. On HotpotQA no selector improves selection recall significantly.
+- An oracle that sees the gold labels keeps all gold chunks at a 25% budget, so the selectors recover only a small part of
+  the possible gain.
+
+**End-to-end benchmark** (HotpotQA, 75 questions, budgets 10/25/50/100%, 24 conditions, EM and F1).
+
+- Token F1 for Random rises from 0.068 at a 10% budget to 0.609 at 100%; all strategies rise the same way.
+- None of the 18 F1 comparisons (and none of the 18 EM comparisons) is significant after Holm correction. The minimum
+  detectable effect at 80% power is 0.07 to 0.16 F1, so effects below about 0.1 F1 cannot be ruled out.
+- No LLM judge, no native LazyGraphRAG run and no dense-retrieval baseline were run.
+
+`results/` and `cache/` are git-ignored, so they are not in a normal clone. They are shared with the repository archive,
+or you can regenerate them with the commands below (the model-output cache makes a re-run of the paid step free when it is
+present).
+
+```bash
+# Selection study (free, no API key)
+python3 -m analysis.selection_study --datasets hotpotqa,musique --num-questions 500
+
+# End-to-end benchmark (paid: needs OPENAI_API_KEY (and OPENAI_BASE_URL for a compatible provider such as Cerebras) in .env; check --dry-run first)
+python3 -m src.prepare_data --config configs/benchmark_75q_hotpotqa.yaml
+python3 -m experiments.run --config configs/benchmark_75q_hotpotqa.yaml --dry-run
+python3 -m experiments.run --config configs/benchmark_75q_hotpotqa.yaml --confirm-paid --no-judge
+python3 -m analysis.run --matrix-dir results/experiments/benchmark_75q_hotpotqa
+
+# Paper figures 2-4 from the saved CSV results (writes paper_figures/)
+python3 make_paper_figures.py
+```
+
+`configs/benchmark_1m_hotpotqa.yaml` is the earlier 30-question run of the same design.
 
 ## Setup
 
@@ -387,10 +430,10 @@ tables (CSV / Markdown / LaTeX), figures (PNG at 300 dpi + PDF) and one machine-
 an experiment, calls an API, downloads a dataset or touches Git (the current commit hash is only *read* from `.git`
 for provenance).
 
-> **No real benchmark has been run.** Phase 12 was developed and tested on the free mock runs and on *synthetic*
-> matrices produced by the real Phase 10 runner with test doubles. Nothing in this repository is a research result,
-> and no research conclusion is claimed. Mock output is only ever a layout test and is always marked
-> **MOCK — NOT RESULTS**.
+> Phase 12 was developed and tested on the free mock runs and on *synthetic* matrices produced by the real Phase 10
+> runner with test doubles. It has since been applied to the real 75-question HotpotQA matrix
+> (`results/experiments/benchmark_75q_hotpotqa/analysis/real/`); see "Results" above for what that run does and does not
+> show. Mock output is only ever a layout test and is always marked **MOCK — NOT RESULTS**.
 
 ### Dependencies
 
@@ -526,8 +569,8 @@ run. Not supported in v1: answer-in-context rate, entity-level recall, retrieval
 
 ### Limitations
 
-- No real data has been analysed; all tests use mock or synthetic matrices. The mock/real gate cannot prove a real API produced the answers.
-- One question seed and (in the pre-specified design) 200 questions per dataset: conclusions would hold for those questions only.
+- The real analysis covers one dataset (HotpotQA), 75 questions and one question seed; the automated tests use mock or synthetic matrices. The mock/real gate cannot prove a real API produced the answers.
+- One question seed and few questions (75 in the executed run, 200 per dataset in the pre-specified design): conclusions hold for those questions only.
 - The paired test treats questions as independent and assumes the sign of each difference is exchangeable under the null; the LLM judge adds its own noise and possible self-preference bias (set a judge model different from the generator).
 - Holm / BH correct within a family, not across datasets or metrics; with 3 Random shuffles the shuffle spread is a crude estimate.
 - Monte Carlo p-values have resolution 1 / (B + 1); exact when the number of non-zero differences is small.
@@ -539,7 +582,7 @@ run. Not supported in v1: answer-in-context rate, entity-level recall, retrieval
 
 `configs/benchmark_real.yaml` describes the pre-specified real design (2 datasets × 6 budgets × (3 Random shuffles + 3
 other strategies) = 72 conditions, question seed 42, 200 questions per dataset, real extraction / generation / judge).
-**It has never been run.** It deliberately has no judge model (`REPLACE_ME_JUDGE_MODEL`) and a tiny extraction cost cap
+**It has never been run** (the runs actually executed use `configs/benchmark_75q_hotpotqa.yaml`). It deliberately has no judge model (`REPLACE_ME_JUDGE_MODEL`) and a tiny extraction cost cap
 so that an unreviewed run stops early; its header lists the human steps (check prices, `src.prepare_data`, `--dry-run`,
 raise the cap, then `--confirm-paid`). Running it costs real money and needs `OPENAI_API_KEY`.
 
@@ -562,6 +605,9 @@ experiments/    experiment runner over the matched-budget matrix (Blueprint Phas
 aggregation/    cost/runtime/evidence aggregation into per-condition and group summaries (Blueprint Phase 14)
 analysis/       Phase 12: loader and gate, statistics, evidence metrics, summary, tables, figures, CLI (`python -m analysis.run`)
 results/        run outputs (not committed)
+planner/        budget planner: how much of a corpus is worth extracting (cost model, pilot run, recommendation)
+demo/           local presentation web UI (see demo/README.md)
+paper_figures/  figures 2-4 of the paper, written by make_paper_figures.py
 notebooks/      analysis notebooks (Phase 15, not started)
 tests/          one test file per component
 ```
